@@ -1,0 +1,873 @@
+@import 'tailwindcss';
+@import 'tw-animate-css';
+@import 'react-quill-new/dist/quill.snow.css';
+
+@custom-variant dark (&:is(.dark *));
+
+/* Prevent scrollbar from affecting page width */
+html {
+  scrollbar-gutter: stable;
+}
+
+@theme inline {
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-sidebar-ring: var(--sidebar-ring);
+  --color-sidebar-border: var(--sidebar-border);
+  --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
+  --color-sidebar-accent: var(--sidebar-accent);
+  --color-sidebar-primary-foreground: var(--sidebar-primary-foreground);
+  --color-sidebar-primary: var(--sidebar-primary);
+  --color-sidebar-foreground: var(--sidebar-foreground);
+  --color-sidebar: var(--sidebar);
+  --color-chart-5: var(--chart-5);
+  --color-chart-4: var(--chart-4);
+  --color-chart-3: var(--chart-3);
+  --color-chart-2: var(--chart-2);
+  --color-chart-1: var(--chart-1);
+  --color-ring: var(--ring);
+  --color-input: var(--input);
+  --color-border: var(--border);
+  --color-destructive: var(--destructive);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-accent: var(--accent);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-muted: var(--muted);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-secondary: var(--secondary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-primary: var(--primary);
+  --color-popover-foreground: var(--popover-foreground);
+  --color-popover: var(--popover);
+  --color-card-foreground: var(--card-foreground);
+  --color-card: var(--card);
+  --radius-sm: calc(var(--radius) - 4px);
+  --radius-md: calc(var(--radius) - 2px);
+  --radius-lg: var(--radius);
+  --radius-xl: calc(var(--radius) + 4px);
+  --radius-2xl: calc(var(--radius) + 8px);
+  --radius-3xl: calc(var(--radius) + 12px);
+  --radius-4xl: calc(var(--radius) + 16px);
+  --font-sans:
+    'Inter', 'PingFang SC', 'Hiragino Sans GB', 'Microsoft YaHei', ui-sans-serif,
+    system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto,
+    'Helvetica Neue', Arial, sans-serif;
+  --font-mono:
+    ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, 'Liberation Mono',
+    'Courier New', monospace;
+}
+
+:root {
+  --radius: 0.625rem;
+  --background: #ffffff;
+  --foreground: #111827;
+  --card: #ffffff;
+  --card-foreground: #111827;
+  --popover: #ffffff;
+  --popover-foreground: #111827;
+  --primary: #7c3aed;
+  --primary-foreground: #ffffff;
+  --secondary: #f3f4f6;
+  --secondary-foreground: #111827;
+  --muted: #f3f4f6;
+  --muted-foreground: #6b7280;
+  --accent: #06b6d4;
+  --accent-foreground: #ffffff;
+  --destructive: #ef4444;
+  --border: #e5e7eb;
+  --input: #e5e7eb;
+  --ring: #7c3aed;
+  --chart-1: #7c3aed;
+  --chart-2: #06b6d4;
+  --chart-3: #22c55e;
+  --chart-4: #f59e0b;
+  --chart-5: #ef4444;
+  --sidebar: #f9fafb;
+  --sidebar-foreground: #111827;
+  --sidebar-primary: #7c3aed;
+  --sidebar-primary-foreground: #ffffff;
+  --sidebar-accent: #f3f4f6;
+  --sidebar-accent-foreground: #111827;
+  --sidebar-border: #e5e7eb;
+  --sidebar-ring: #7c3aed;
+}
+
+/* Admin dark theme override */
+.admin-dark {
+  --background: #0f0f13;
+  --foreground: #e5e7eb;
+  --card: #1a1a24;
+  --card-foreground: #e5e7eb;
+  --popover: #1a1a24;
+  --popover-foreground: #e5e7eb;
+  --secondary: #1e1e2e;
+  --secondary-foreground: #e5e7eb;
+  --muted: #1e1e2e;
+  --muted-foreground: #9ca3af;
+  --border: #2d2d3f;
+  --input: #2d2d3f;
+  --sidebar: #12121a;
+  --sidebar-foreground: #e5e7eb;
+  --sidebar-accent: #1e1e2e;
+  --sidebar-accent-foreground: #e5e7eb;
+  --sidebar-border: #2d2d3f;
+  background-color: #0f0f13;
+  color: #e5e7eb;
+}
+
+.admin-dark ::-webkit-scrollbar-track {
+  background: #0f0f13;
+}
+.admin-dark ::-webkit-scrollbar-thumb {
+  background: #2d2d3f;
+}
+.admin-dark ::-webkit-scrollbar-thumb:hover {
+  background: #3d3d5f;
+}
+
+/* Quill editor white background inside admin dark theme */
+.admin-dark .ql-toolbar.ql-snow {
+  background: #ffffff;
+  border-color: #e5e7eb;
+  border-radius: 0.5rem 0.5rem 0 0;
+}
+
+/* Quill toolbar sticky - floats at top when scrolling */
+.quill-sticky-toolbar .ql-toolbar.ql-snow {
+  position: sticky;
+  top: 0;
+  z-index: 10;
+  background: #ffffff;
+  border-top-left-radius: 0.5rem;
+  border-top-right-radius: 0.5rem;
+}
+/* In editor pages, toolbar sticks below the sticky header */
+.static-page-editor .quill-sticky-toolbar .ql-toolbar.ql-snow {
+  top: 56px;
+}
+.content-pages-editor .quill-sticky-toolbar .ql-toolbar.ql-snow {
+  top: 60px;
+  max-width: 1060px;
+  margin: 0 auto;
+}
+.admin-dark .ql-container.ql-snow {
+  background: #ffffff;
+  border-color: #e5e7eb;
+  border-radius: 0 0 0.5rem 0.5rem;
+  color: #111827;
+  min-height: 200px;
+}
+/* Constrain editor content area to match frontend article width (1060px) */
+.content-pages-editor .ql-container.ql-snow {
+  max-width: 1060px;
+  margin: 0 auto;
+}
+/* Images in editor: display at natural size, scale down only when exceeding editor width */
+.content-pages-editor .ql-editor img {
+  max-width: 100%;
+  height: auto;
+  border-radius: 0.5rem;
+  margin: 1rem 0;
+}
+
+/* ===== Image Resize Handles in Quill Editor (overlay approach — no DOM mutation inside editor) ===== */
+.ql-img-resize-selection {
+  position: absolute;
+  border: 2px solid #7c3aed;
+  pointer-events: none;
+  z-index: 20;
+  box-sizing: border-box;
+}
+
+.ql-img-resize-selection .ql-img-resize-handle {
+  position: absolute;
+  width: 10px;
+  height: 10px;
+  background: #7c3aed;
+  border: 2px solid #ffffff;
+  border-radius: 50%;
+  z-index: 21;
+  pointer-events: auto;
+  cursor: nwse-resize;
+  box-shadow: 0 1px 3px rgba(0,0,0,0.3);
+}
+
+.ql-img-resize-selection .ql-img-resize-handle.ql-handle-tl { top: -5px; left: -5px; cursor: nwse-resize; }
+.ql-img-resize-selection .ql-img-resize-handle.ql-handle-tr { top: -5px; right: -5px; cursor: nesw-resize; }
+.ql-img-resize-selection .ql-img-resize-handle.ql-handle-bl { bottom: -5px; left: -5px; cursor: nesw-resize; }
+.ql-img-resize-selection .ql-img-resize-handle.ql-handle-br { bottom: -5px; right: -5px; cursor: nwse-resize; }
+
+.ql-img-resize-selection .ql-img-resize-handle:hover {
+  background: #6d28d9;
+  transform: scale(1.2);
+}
+
+.ql-img-resize-overlay {
+  position: fixed;
+  top: 0; left: 0; right: 0; bottom: 0;
+  z-index: 9999;
+  cursor: nwse-resize;
+}
+
+/* ===== Image Floating Toolbar (alignment, border, crop) ===== */
+.ql-img-toolbar {
+  position: absolute;
+  display: flex;
+  gap: 2px;
+  background: #ffffff;
+  border: 1px solid #d1d5db;
+  border-radius: 6px;
+  padding: 2px;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.15);
+  z-index: 60;
+  pointer-events: auto;
+  flex-wrap: wrap;
+  max-width: 260px;
+}
+.ql-img-toolbar .ql-img-toolbar-group {
+  display: flex;
+  gap: 1px;
+  padding: 0 3px;
+  border-right: 1px solid #e5e7eb;
+}
+.ql-img-toolbar .ql-img-toolbar-group:last-child {
+  border-right: none;
+}
+.ql-img-toolbar button {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  border: none;
+  background: transparent;
+  border-radius: 4px;
+  cursor: pointer;
+  color: #374151;
+  padding: 0;
+}
+.ql-img-toolbar button:hover {
+  background: #f3f4f6;
+  color: #7c3aed;
+}
+.ql-img-toolbar button.active {
+  background: #ede9fe;
+  color: #7c3aed;
+}
+.ql-img-toolbar button svg {
+  width: 16px;
+  height: 16px;
+}
+
+/* ===== Editor Image Alignment & Border Styles ===== */
+.content-pages-editor .ql-editor img.img-align-left {
+  display: block;
+  float: none;
+  margin: 0.5rem 0;
+  margin-left: 0;
+  margin-right: auto;
+}
+.content-pages-editor .ql-editor img.img-align-center {
+  display: block;
+  margin-left: auto;
+  margin-right: auto;
+  float: none;
+}
+.content-pages-editor .ql-editor img.img-align-right {
+  display: block;
+  float: none;
+  margin: 0.5rem 0;
+  margin-left: auto;
+  margin-right: 0;
+}
+.content-pages-editor .ql-editor img.img-border-none {
+  border: none;
+  border-radius: 0;
+}
+.content-pages-editor .ql-editor img.img-border-thin {
+  border: 1px solid #d1d5db;
+  border-radius: 0.25rem;
+}
+.content-pages-editor .ql-editor img.img-border-rounded {
+  border: 1px solid #d1d5db;
+  border-radius: 0.75rem;
+}
+.content-pages-editor .ql-editor img.img-border-shadow {
+  border: none;
+  border-radius: 0.5rem;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.12);
+}
+
+/* ===== Image Crop Overlay ===== */
+.ql-crop-container {
+  position: absolute;
+  top: 0; left: 0; width: 100%; height: 100%;
+  cursor: crosshair;
+  z-index: 100;
+}
+.ql-crop-dim {
+  position: absolute;
+  background: rgba(0,0,0,0.5);
+}
+.ql-crop-selection {
+  position: absolute;
+  border: 2px dashed #2b7cd8;
+  cursor: move;
+  z-index: 101;
+  box-shadow: 0 0 0 1px rgba(43,124,216,0.3);
+}
+.ql-crop-handle {
+  position: absolute;
+  width: 10px; height: 10px;
+  background: #fff;
+  border: 2px solid #2b7cd8;
+  border-radius: 1px;
+  z-index: 102;
+}
+.ql-crop-handle.nw { cursor: nw-resize; }
+.ql-crop-handle.ne { cursor: ne-resize; }
+.ql-crop-handle.sw { cursor: sw-resize; }
+.ql-crop-handle.se { cursor: se-resize; }
+.ql-crop-handle.n { cursor: n-resize; }
+.ql-crop-handle.s { cursor: s-resize; }
+.ql-crop-handle.e { cursor: e-resize; }
+.ql-crop-handle.w { cursor: w-resize; }
+
+/* ===== Editor Table Styles (matches frontend display) ===== */
+.content-pages-editor .ql-editor .table-wrapper {
+  width: 100%;
+  overflow-x: auto;
+  margin: 1rem 0;
+}
+.content-pages-editor .ql-editor .table-wrapper table {
+  width: 100%;
+  border-collapse: collapse;
+  table-layout: fixed;
+}
+.content-pages-editor .ql-editor .table-wrapper th,
+.content-pages-editor .ql-editor .table-wrapper td {
+  border: 1px solid #e5e7eb;
+  padding: 0.6rem 0.75rem;
+  text-align: left;
+  word-break: break-word;
+}
+.content-pages-editor .ql-editor .table-wrapper thead {
+  border-bottom: 3px solid #7c3aed;
+}
+.content-pages-editor .ql-editor .table-wrapper th {
+  background: #f9fafb;
+  font-weight: 600;
+  color: #111827;
+}
+.content-pages-editor .ql-editor .table-wrapper tbody tr:nth-child(even) {
+  background: #f9fafb;
+}
+.content-pages-editor .ql-editor .table-wrapper tbody tr:hover {
+  background: #f3f4f6;
+}
+/* TableEmbed blot: ensure it renders as a block element in the editor */
+.content-pages-editor .ql-editor div.table-wrapper {
+  display: block;
+  width: 100%;
+  overflow-x: auto;
+  margin: 1rem 0;
+  cursor: default;
+}
+.admin-dark .ql-editor {
+  color: #111827;
+}
+.admin-dark .ql-snow .ql-stroke {
+  stroke: #6b7280;
+}
+.admin-dark .ql-snow .ql-fill {
+  fill: #6b7280;
+}
+.admin-dark .ql-snow .ql-picker-label {
+  color: #6b7280;
+}
+.admin-dark .ql-snow .ql-picker-options {
+  background: #ffffff;
+  border-color: #e5e7eb;
+  border-radius: 0.5rem;
+  padding: 4px;
+  z-index: 100;
+}
+
+/* ===== Quill Format Painter Button ===== */
+.ql-toolbar .ql-format-painter {
+  width: auto !important;
+  padding: 3px 5px !important;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  outline: none;
+}
+.ql-toolbar .ql-format-painter svg {
+  width: 16px;
+  height: 16px;
+}
+.ql-toolbar .ql-format-painter:hover {
+  color: #7c3aed;
+}
+.ql-toolbar .ql-format-painter.ql-active {
+  color: #7c3aed;
+  background: rgba(124, 58, 237, 0.1);
+  border-radius: 3px;
+}
+
+/* Word Import & Table Insert buttons */
+.ql-toolbar .ql-word-import,
+.ql-toolbar .ql-insert-table {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 24px;
+  padding: 2px;
+}
+.ql-toolbar .ql-word-import:hover,
+.ql-toolbar .ql-insert-table:hover {
+  color: #7c3aed;
+  background: rgba(124, 58, 237, 0.1);
+  border-radius: 3px;
+}
+
+/* Quill Editor Table Styles */
+.ql-editor table {
+  border-collapse: collapse;
+  width: 100%;
+  margin: 1rem 0;
+  table-layout: fixed;
+}
+.ql-editor th,
+.ql-editor td {
+  border: 1px solid #e5e7eb;
+  padding: 0.6rem 0.75rem;
+  text-align: left;
+  word-break: break-word;
+}
+.ql-editor thead {
+  border-bottom: 3px solid #7c3aed;
+}
+.ql-editor th {
+  background: #f9fafb;
+  font-weight: 600;
+  color: #111827;
+}
+.ql-editor tbody tr:nth-child(even) {
+  background: #f9fafb;
+}
+.ql-editor tbody tr:hover {
+  background: #f3f4f6;
+}
+
+/* ===== Quill Color Picker Customization ===== */
+
+/* Color picker dropdown - absolute position so it doesn't block content */
+.ql-snow .ql-color-picker .ql-picker-options {
+  position: absolute !important;
+  top: 100% !important;
+  left: 0 !important;
+  width: auto !important;
+  min-width: 240px !important;
+  padding: 8px !important;
+  display: none !important;
+  flex-wrap: wrap !important;
+  gap: 2px !important;
+  z-index: 100 !important;
+  box-shadow: 0 4px 16px rgba(0,0,0,0.15) !important;
+}
+
+/* Only show dropdown when expanded */
+.ql-snow .ql-color-picker.ql-expanded .ql-picker-options {
+  display: flex !important;
+}
+
+/* Show dropdown triangle on color picker label - positioned to the right of the icon */
+.ql-snow .ql-color-picker {
+  width: 44px !important;
+}
+.ql-snow .ql-color-picker .ql-picker-label {
+  position: relative !important;
+  padding: 2px 16px 2px 4px !important;
+}
+.ql-snow .ql-color-picker .ql-picker-label svg {
+  width: 18px !important;
+  height: 18px !important;
+}
+.ql-snow .ql-color-picker .ql-picker-label::after {
+  content: "" !important;
+  position: absolute !important;
+  right: 2px !important;
+  top: 50% !important;
+  transform: translateY(-50%) !important;
+  width: 0 !important;
+  height: 0 !important;
+  border-left: 3px solid transparent !important;
+  border-right: 3px solid transparent !important;
+  border-top: 4px solid #6b7280 !important;
+  display: inline-block !important;
+}
+
+.ql-snow .ql-color-picker.ql-expanded .ql-picker-label::after {
+  border-top: 4px solid #7c3aed !important;
+}
+
+/* Each color swatch item */
+.ql-snow .ql-color-picker .ql-picker-item {
+  width: 22px !important;
+  height: 22px !important;
+  margin: 0 !important;
+  border-radius: 3px !important;
+  border: 1px solid #d1d5db !important;
+  display: inline-block !important;
+  flex-shrink: 0;
+}
+
+/* Force 8 items per row using nth-child */
+.ql-snow .ql-color-picker .ql-picker-item:nth-child(8n+1) {
+  margin-left: 0 !important;
+}
+
+/* Color swatch hover */
+.ql-snow .ql-color-picker .ql-picker-item:hover {
+  border-color: #7c3aed !important;
+  outline: 2px solid #7c3aed !important;
+  outline-offset: -1px;
+}
+
+/* Selected color swatch */
+.ql-snow .ql-color-picker .ql-picker-item.ql-selected {
+  border-color: #7c3aed !important;
+  outline: 2px solid #7c3aed !important;
+  outline-offset: -1px;
+}
+
+/* Transparent/no-color swatch - white bg with diagonal red slash */
+.ql-snow .ql-color-picker .ql-picker-item[data-value="transparent"] {
+  position: relative !important;
+  background-color: #ffffff !important;
+  background-image: none !important;
+}
+.ql-snow .ql-color-picker .ql-picker-item[data-value="transparent"]::after {
+  content: "" !important;
+  position: absolute !important;
+  top: 1px !important;
+  left: 1px !important;
+  right: 1px !important;
+  bottom: 1px !important;
+  background: linear-gradient(
+    to top right,
+    transparent calc(50% - 0.5px),
+    #ef4444 calc(50% - 0.5px),
+    #ef4444 calc(50% + 0.5px),
+    transparent calc(50% + 0.5px)
+  ) !important;
+  pointer-events: none !important;
+}
+
+/* Override Quill's default selected border color for color picker */
+.ql-toolbar.ql-snow .ql-color-picker .ql-picker-item.ql-selected,
+.ql-toolbar.ql-snow .ql-color-picker .ql-picker-item:hover {
+  border-color: #7c3aed !important;
+}
+
+/* Custom color button in color picker dropdown */
+.ql-snow .ql-color-picker .ql-picker-options .ql-custom-color-wrapper {
+  border-top: 1px solid #374151;
+  margin-top: 4px;
+  padding-top: 4px;
+  width: 100%;
+}
+.ql-snow .ql-color-picker .ql-picker-options .ql-custom-color-btn {
+  display: flex;
+  align-items: center;
+  padding: 4px 6px;
+  cursor: pointer;
+  border-radius: 3px;
+  font-size: 12px;
+  color: #9ca3af;
+  white-space: nowrap;
+  transition: background-color 0.15s, color 0.15s;
+}
+.ql-snow .ql-color-picker .ql-picker-options .ql-custom-color-btn:hover {
+  background-color: rgba(124, 58, 237, 0.15);
+  color: #c4b5fd;
+}
+.ql-snow .ql-color-picker .ql-picker-options .ql-custom-color-btn svg {
+  flex-shrink: 0;
+}
+
+/* Inline color input - hidden but positioned near button */
+.ql-snow .ql-color-picker .ql-picker-options .ql-custom-color-input {
+  position: absolute;
+  opacity: 0;
+  width: 0;
+  height: 0;
+  pointer-events: none;
+}
+
+/* Recently used colors section */
+.ql-snow .ql-color-picker .ql-picker-options .ql-recent-colors-wrapper {
+  border-top: 1px solid #374151;
+  margin-top: 4px;
+  padding-top: 4px;
+  width: 100%;
+}
+.ql-snow .ql-color-picker .ql-picker-options .ql-recent-colors-label {
+  font-size: 11px;
+  color: #6b7280;
+  padding: 0 4px 3px;
+}
+.ql-snow .ql-color-picker .ql-picker-options .ql-recent-colors-row {
+  display: flex;
+  gap: 2px;
+  padding: 0 4px;
+}
+.ql-snow .ql-color-picker .ql-picker-options .ql-recent-color-slot {
+  width: 22px;
+  height: 22px;
+  border-radius: 2px;
+  border: 1px solid #4b5563;
+  cursor: pointer;
+  background-color: #1f2937;
+  transition: border-color 0.15s;
+}
+.ql-snow .ql-color-picker .ql-picker-options .ql-recent-color-slot:hover {
+  border-color: #7c3aed;
+}
+
+body {
+  background-color: #ffffff;
+  color: #111827;
+  font-feature-settings: "cv11", "ss01";
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+/* Custom scrollbar */
+::-webkit-scrollbar {
+  width: 6px;
+}
+::-webkit-scrollbar-track {
+  background: #f3f4f6;
+}
+::-webkit-scrollbar-thumb {
+  background: #d1d5db;
+  border-radius: 3px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: #9ca3af;
+}
+
+/* Price tag pulse animation */
+@keyframes pulse-deal {
+  0%, 100% { transform: scale(1); }
+  50% { transform: scale(1.03); }
+}
+.animate-pulse-deal {
+  animation: pulse-deal 2s ease-in-out infinite;
+}
+
+/* Card glow on hover */
+.card-glow {
+  transition: all 0.3s ease;
+}
+.card-glow:hover {
+  box-shadow: 0 0 20px rgba(124, 58, 237, 0.15), 0 0 40px rgba(124, 58, 237, 0.05);
+  border-color: rgba(124, 58, 237, 0.3);
+}
+
+/* White card hover for homepage */
+.card-white-hover {
+  transition: all 0.3s ease;
+}
+.card-white-hover:hover {
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.08), 0 2px 4px rgba(0, 0, 0, 0.04);
+  border-color: rgba(124, 58, 237, 0.3);
+}
+
+/* Stagger animation */
+@keyframes fadeInUp {
+  from {
+    opacity: 0;
+    transform: translateY(20px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+.animate-fade-in-up {
+  animation: fadeInUp 0.5s ease-out forwards;
+  opacity: 0;
+}
+
+/* Tabular nums for prices */
+.tabular-nums {
+  font-variant-numeric: tabular-nums;
+}
+
+/* Rich text content (Quill output) overflow & typography */
+.rich-text-content {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  overflow-wrap: break-word;
+  word-break: keep-all;
+  max-width: 100%;
+  font-size: 0.9375rem;
+  line-height: 1.65;
+  color: #374151;
+}
+.rich-text-content > * {
+  margin: 0 !important;
+}
+.rich-text-content h1 { font-size: 1.75rem !important; font-weight: 700 !important; color: #111827; }
+.rich-text-content h2 { font-size: 1.375rem !important; font-weight: 700 !important; color: #111827; }
+.rich-text-content h3 { font-size: 1.125rem !important; font-weight: 600 !important; color: #111827; }
+.rich-text-content h4 { font-size: 1rem !important; font-weight: 600 !important; color: #111827; }
+.rich-text-content p { color: #374151; }
+.rich-text-content ul, .rich-text-content ol { padding-left: 1.5rem; }
+.rich-text-content ul { list-style-type: disc; }
+.rich-text-content ol { list-style-type: decimal; }
+.rich-text-content li { color: #374151; }
+.rich-text-content a {
+  color: #7c3aed;
+  text-decoration: underline;
+}
+.rich-text-content a:hover {
+  color: #6d28d9;
+}
+.rich-text-content img {
+  max-width: 100%;
+  height: auto;
+  border-radius: 0.5rem;
+  margin: 1rem 0;
+}
+.rich-text-content img.img-align-left {
+  display: block;
+  float: none;
+  margin: 0.5rem 0;
+  margin-left: 0;
+  margin-right: auto;
+}
+.rich-text-content img.img-align-center {
+  display: block;
+  margin-left: auto;
+  margin-right: auto;
+  float: none;
+}
+.rich-text-content img.img-align-right {
+  display: block;
+  float: none;
+  margin: 0.5rem 0;
+  margin-left: auto;
+  margin-right: 0;
+}
+.rich-text-content img.img-border-none {
+  border: none;
+  border-radius: 0;
+}
+.rich-text-content img.img-border-thin {
+  border: 1px solid #d1d5db;
+  border-radius: 0.25rem;
+}
+.rich-text-content img.img-border-rounded {
+  border: 1px solid #d1d5db;
+  border-radius: 0.75rem;
+}
+.rich-text-content img.img-border-shadow {
+  border: none;
+  border-radius: 0.5rem;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.12);
+}
+.rich-text-content blockquote {
+  border-left: 4px solid #7c3aed;
+  padding-left: 1rem;
+  margin: 1rem 0;
+  color: #6b7280;
+  font-style: italic;
+}
+.rich-text-content pre,
+.rich-text-content code {
+  overflow-x: auto;
+  max-width: 100%;
+}
+.rich-text-content pre {
+  background: #f3f4f6;
+  padding: 1rem;
+  border-radius: 0.5rem;
+}
+.rich-text-content .table-wrapper {
+  width: 100%;
+  overflow-x: auto;
+  margin: 1rem 0;
+}
+.rich-text-content .table-wrapper table {
+  width: 100%;
+  border-collapse: collapse;
+  table-layout: fixed;
+}
+.rich-text-content .table-wrapper th,
+.rich-text-content .table-wrapper td {
+  border: 1px solid #e5e7eb;
+  padding: 0.6rem 0.75rem;
+  text-align: left;
+  word-break: break-word;
+}
+.rich-text-content .table-wrapper thead {
+  border-bottom: 3px solid #7c3aed;
+}
+.rich-text-content .table-wrapper th {
+  background: #f9fafb;
+  font-weight: 600;
+  color: #111827;
+}
+.rich-text-content .table-wrapper tbody tr:nth-child(even) {
+  background: #f9fafb;
+}
+.rich-text-content .table-wrapper tbody tr:hover {
+  background: #f3f4f6;
+}
+.rich-text-content table {
+  width: 100%;
+  border-collapse: collapse;
+  overflow-x: auto;
+  display: block;
+  table-layout: fixed;
+  margin: 1rem 0;
+}
+.rich-text-content th,
+.rich-text-content td {
+  border: 1px solid #e5e7eb;
+  padding: 0.6rem 0.75rem;
+  text-align: left;
+  word-break: break-word;
+}
+.rich-text-content thead {
+  border-bottom: 3px solid #7c3aed;
+}
+.rich-text-content th {
+  background: #f9fafb;
+  font-weight: 600;
+  color: #111827;
+}
+.rich-text-content tbody tr:nth-child(even) {
+  background: #f9fafb;
+}
+.rich-text-content tbody tr:hover {
+  background: #f3f4f6;
+}
+.rich-text-content iframe {
+  max-width: 100%;
+}
+
+/* Hide scrollbar for horizontal scrollable filter sections */
+.scrollbar-hide {
+  -ms-overflow-style: none;
+  scrollbar-width: none;
+}
+.scrollbar-hide::-webkit-scrollbar {
+  display: none;
+}
