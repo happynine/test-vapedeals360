@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { getSupabaseClient } from "@/storage/database/supabase-client";
+import { getServiceRoleClient } from "@/storage/database/supabase-client";
 import { put, list } from "@vercel/blob";
 import { Readable } from "node:stream";
 

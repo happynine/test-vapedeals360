@@ -1,12 +1,12 @@
 import { verifyAdminSession, unauthorizedResponse } from '@/lib/auth';
 import { checkRateLimit, rateLimitResponse } from '@/lib/rate-limit';
 import { NextRequest, NextResponse } from 'next/server';
-import { getSupabaseClient } from '@/storage/database/supabase-client';
+import { getServiceRoleClient } from '@/storage/database/supabase-client';
 import { getPresignedUrl } from '@/lib/storage';
 import { del } from '@vercel/blob';
 
 function getClient() {
-  return getSupabaseClient();
+  return getServiceRoleClient();
 }
 
 // 删除 Vercel Blob 文件的辅助函数（失败不影响主流程）

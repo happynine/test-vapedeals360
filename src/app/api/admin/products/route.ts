@@ -1,7 +1,7 @@
 import { verifyAdminSession, unauthorizedResponse } from '@/lib/auth';
 import { checkRateLimit, rateLimitResponse } from '@/lib/rate-limit';
 import { NextRequest, NextResponse } from 'next/server';
-import { getSupabaseClient } from '@/storage/database/supabase-client';
+import { getServiceRoleClient } from '@/storage/database/supabase-client';
 import { getPresignedUrl } from '@/lib/storage';
 import { del } from '@vercel/blob';
 
@@ -91,7 +91,7 @@ async function processExpiredPromotions(client: any, promotionProductId: number)
 // GET all products (admin view, including inactive)
 export async function GET(request: NextRequest) {
   try {
-    const client = getSupabaseClient();
+    const client = getServiceRoleClient();
     const { searchParams } = new URL(request.url);
     const page = parseInt(searchParams.get('page') || '1');
     const limit = parseInt(searchParams.get('limit') || '20');
@@ -187,7 +187,7 @@ export async function POST(request: NextRequest) {
   if (!rl.allowed) return rateLimitResponse(rl.resetTime);
   if (!(await verifyAdminSession(request))) return unauthorizedResponse();
   try {
-    const client = getSupabaseClient();
+    const client = getServiceRoleClient();
     const body = await request.json();
     const { slug, category_id, image_url, image_url_small, home_image_key, images, is_active, is_featured, sales_region, notes, translations, prices, promotion_prices } = body;
     // Create product
@@ -325,7 +325,7 @@ export async function PUT(request: NextRequest) {
   if (!rl.allowed) return rateLimitResponse(rl.resetTime);
   if (!(await verifyAdminSession(request))) return unauthorizedResponse();
   try {
-    const client = getSupabaseClient();
+    const client = getServiceRoleClient();
     const body = await request.json();
     const { id, slug, category_id, image_url, image_url_small, home_image_key, images, is_active, is_featured, sales_region, notes, translations, prices, promotion_prices } = body;
 
@@ -553,7 +553,7 @@ export async function DELETE(request: NextRequest) {
   if (!rl.allowed) return rateLimitResponse(rl.resetTime);
   if (!(await verifyAdminSession(request))) return unauthorizedResponse();
   try {
-    const client = getSupabaseClient();
+    const client = getServiceRoleClient();
     const { searchParams } = new URL(request.url);
     const id = searchParams.get('id');
     if (!id) throw new Error('Missing id parameter');

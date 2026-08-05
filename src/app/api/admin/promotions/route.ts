@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { getSupabaseClient } from '@/storage/database/supabase-client';
+import { getServiceRoleClient } from '@/storage/database/supabase-client';
 import { del } from '@vercel/blob';
 // 删除 Vercel Blob 文件的辅助函数（失败不影响主流程）
 async function deleteBlobFile(fileUrl: string | null | undefined) {
@@ -13,7 +13,7 @@ async function deleteBlobFile(fileUrl: string | null | undefined) {
 }
 export async function GET(request: NextRequest) {
   try {
-    const client = getSupabaseClient();
+    const client = getServiceRoleClient();
     const { searchParams } = new URL(request.url);
     const page = parseInt(searchParams.get('page') || '1');
     const limit = parseInt(searchParams.get('limit') || '20');
@@ -62,7 +62,7 @@ export async function GET(request: NextRequest) {
 }
 export async function POST(request: NextRequest) {
   try {
-    const client = getSupabaseClient();
+    const client = getServiceRoleClient();
     const body = await request.json();
     const { title, slug, special_price, currency, sort_order, is_active, translations, products } = body;
     if (!slug) {
@@ -108,7 +108,7 @@ export async function POST(request: NextRequest) {
 }
 export async function PUT(request: NextRequest) {
   try {
-    const client = getSupabaseClient();
+    const client = getServiceRoleClient();
     const body = await request.json();
     const { id, title, slug, special_price, currency, sort_order, is_active, translations, products } = body;
     if (!id) {
@@ -176,7 +176,7 @@ export async function PUT(request: NextRequest) {
 }
 export async function DELETE(request: NextRequest) {
   try {
-    const client = getSupabaseClient();
+    const client = getServiceRoleClient();
     const { searchParams } = new URL(request.url);
     const id = searchParams.get('id');
     if (!id) {

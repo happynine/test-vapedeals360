@@ -1,7 +1,7 @@
 import { verifyAdminSession, unauthorizedResponse } from '@/lib/auth';
 import { checkRateLimit, rateLimitResponse } from '@/lib/rate-limit';
 import { NextRequest, NextResponse } from 'next/server';
-import { getSupabaseClient } from '@/storage/database/supabase-client';
+import { getServiceRoleClient } from '@/storage/database/supabase-client';
 import { del } from '@vercel/blob';
 // 删除 Vercel Blob 文件的辅助函数（失败不影响主流程）
 async function deleteBlobFile(fileUrl: string | null | undefined) {
@@ -19,7 +19,7 @@ export async function GET(request: Request) {
   if (!rl.allowed) return rateLimitResponse(rl.resetTime);
   if (!(await verifyAdminSession(request))) return unauthorizedResponse();
   try {
-    const client = getSupabaseClient();
+    const client = getServiceRoleClient();
     const { data, error } = await client
       .from('stores')
       .select('*, store_translations(*)')
@@ -38,7 +38,7 @@ export async function POST(request: NextRequest) {
   if (!rl.allowed) return rateLimitResponse(rl.resetTime);
   if (!(await verifyAdminSession(request))) return unauthorizedResponse();
   try {
-    const client = getSupabaseClient();
+    const client = getServiceRoleClient();
     const body = await request.json();
     const { slug, logo_url, website_url, website_urls, is_active, store_type, regions, notes, translations } = body;
     // Check for duplicate slug
@@ -80,7 +80,7 @@ export async function PUT(request: NextRequest) {
   if (!rl.allowed) return rateLimitResponse(rl.resetTime);
   if (!(await verifyAdminSession(request))) return unauthorizedResponse();
   try {
-    const client = getSupabaseClient();
+    const client = getServiceRoleClient();
     const body = await request.json();
     const { id, slug, logo_url, website_url, website_urls, is_active, store_type, regions, notes, translations } = body;
     
@@ -140,7 +140,7 @@ export async function DELETE(request: NextRequest) {
   if (!rl.allowed) return rateLimitResponse(rl.resetTime);
   if (!(await verifyAdminSession(request))) return unauthorizedResponse();
   try {
-    const client = getSupabaseClient();
+    const client = getServiceRoleClient();
     const { searchParams } = new URL(request.url);
     const id = searchParams.get('id');
     if (!id) throw new Error('Missing id parameter');
