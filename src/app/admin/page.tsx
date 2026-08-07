@@ -4893,7 +4893,9 @@ function PromotionFormModal({ promotion, products, promotionProducts, onSave, la
   const [sortOrder, setSortOrder] = useState(promotion?.sort_order || 0);
   const [isActive, setIsActive] = useState(promotion?.is_active !== false);
   const [translations, setTranslations] = useState<{ language: string; name: string; title: string; description: string; cover_image_key: string | null; cover_image_url: string | null; mobile_cover_image_key: string | null; mobile_cover_image_url: string | null; }[]>(
-    promotion?.promotion_translations?.map((tr) => ({ language: tr.language, name: tr.name || '', title: tr.title || '', description: tr.description || '', cover_image_key: tr.cover_image_key, cover_image_url: tr.cover_image_url, mobile_cover_image_key: tr.mobile_cover_image_key, mobile_cover_image_url: tr.mobile_cover_image_url })) || activeLanguages.map(l => ({ language: l.code, name: '', title: '', description: '', cover_image_key: null, cover_image_url: null, mobile_cover_image_key: null, mobile_cover_image_url: null }))
+    (promotion?.promotion_translations && promotion.promotion_translations.length > 0)
+      ? promotion.promotion_translations.map((tr) => ({ language: tr.language, name: tr.name || '', title: tr.title || '', description: tr.description || '', cover_image_key: tr.cover_image_key, cover_image_url: tr.cover_image_url, mobile_cover_image_key: tr.mobile_cover_image_key, mobile_cover_image_url: tr.mobile_cover_image_url }))
+      : activeLanguages.map(l => ({ language: l.code, name: '', title: '', description: '', cover_image_key: null, cover_image_url: null, mobile_cover_image_key: null, mobile_cover_image_url: null }))
   );
   // Filter promotion products linked to this promotion
   const linkedPromotionProducts = promotionProducts.filter(pp => pp.promotion_id === promotion?.id);
@@ -5138,7 +5140,9 @@ function CategoryFormModal({ category, onSave, lang, activeLanguages }: { catego
   const [sortOrder, setSortOrder] = useState(category?.sort_order || 0);
   const [isActive, setIsActive] = useState(category?.is_active !== false);
   const [translations, setTranslations] = useState<{ language: string; name: string }[]>(
-    category?.category_translations?.map((tr) => ({ language: tr.language, name: tr.name })) || activeLanguages.map(l => ({ language: l.code, name: '' }))
+    (category?.category_translations && category.category_translations.length > 0)
+      ? category.category_translations.map((tr) => ({ language: tr.language, name: tr.name }))
+      : activeLanguages.map(l => ({ language: l.code, name: '' }))
   );
   const [saving, setSaving] = useState(false);
   const isEdit = !!category;
@@ -5401,7 +5405,9 @@ function StoreFormModal({ store, onSave, lang, defaultType, activeLanguages, all
     setRegions(newRegions);
   };
   const [translations, setTranslations] = useState<{ language: string; name: string }[]>(
-    store?.store_translations?.map((tr) => ({ language: tr.language, name: tr.name })) || activeLanguages.map(l => ({ language: l.code, name: '' }))
+    (store?.store_translations && store.store_translations.length > 0)
+      ? store.store_translations.map((tr) => ({ language: tr.language, name: tr.name }))
+      : activeLanguages.map(l => ({ language: l.code, name: '' }))
   );
   const [saving, setSaving] = useState(false);
   const isEdit = !!store;
@@ -5685,13 +5691,15 @@ function PromotionProductFormModal({ promotionProduct, categories, stores, promo
   const [notes, setNotes] = useState(promotionProduct?.notes || '');
   // 翻译（与标准产品相同）
   const [translations, setTranslations] = useState<{ language: string; name: string; description: string; features: string; specs: string }[]>(
-    promotionProduct?.promotion_product_translations?.map((tr) => ({
-      language: tr.language,
-      name: tr.name || '',
-      description: tr.description || '',
-      features: tr.features || '',
-      specs: tr.specs || ''
-    })) || activeLanguages.map((lang) => ({ language: lang.code, name: '', description: '', features: '', specs: '' }))
+    (promotionProduct?.promotion_product_translations && promotionProduct.promotion_product_translations.length > 0)
+      ? promotionProduct.promotion_product_translations.map((tr) => ({
+          language: tr.language,
+          name: tr.name || '',
+          description: tr.description || '',
+          features: tr.features || '',
+          specs: tr.specs || ''
+        }))
+      : activeLanguages.map((lang) => ({ language: lang.code, name: '', description: '', features: '', specs: '' }))
   );
   // Store Prices（每个商城带时间设置）
   const [storePrices, setStorePrices] = useState<{ 
@@ -6810,13 +6818,15 @@ function ProductFormModal({ product, categories, stores, promotions, onSave, lan
   const [isFeatured, setIsFeatured] = useState(product?.is_featured || false);
   const [notes, setNotes] = useState(product?.notes || '');
   const [translations, setTranslations] = useState<{ language: string; name: string; description: string; features: string; specs: string }[]>(
-    product?.product_translations?.map((tr) => ({
-      language: tr.language,
-      name: tr.name,
-      description: tr.description || '',
-      features: tr.features || '',
-      specs: tr.specs || '',
-    })) || activeLanguages.map(l => ({ language: l.code, name: '', description: '', features: '', specs: '' }))
+    (product?.product_translations && product.product_translations.length > 0)
+      ? product.product_translations.map((tr) => ({
+          language: tr.language,
+          name: tr.name,
+          description: tr.description || '',
+          features: tr.features || '',
+          specs: tr.specs || '',
+        }))
+      : activeLanguages.map(l => ({ language: l.code, name: '', description: '', features: '', specs: '' }))
   );
   const [prices, setPrices] = useState<{ store_id: string; current_price: string; original_price: string; product_url: string; discount_percent: string; currency: string; region: string; no_quote: boolean; store_type: string; promotion_id: string; time_type: 'permanent' | 'time_range' | 'countdown'; start_time: string; end_time: string; countdown_action: 'convert_to_standard' | 'hide'; standard_price: string; countdown_days: number; countdown_hours: number; countdown_minutes: number; countdown_seconds: number }[]>(
     product?.product_prices?.map((p) => {
