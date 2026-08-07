@@ -6899,13 +6899,15 @@ function ProductFormModal({ product, categories, stores, promotions, onSave, lan
       setNotes(product.notes || '');
       // Sync translations
       setTranslations(
-        product.product_translations?.map((tr) => ({
-          language: tr.language,
-          name: tr.name,
-          description: tr.description || '',
-          features: tr.features || '',
-          specs: tr.specs || '',
-        })) || activeLanguages.map(l => ({ language: l.code, name: '', description: '', features: '', specs: '' }))
+        (product.product_translations && product.product_translations.length > 0)
+          ? product.product_translations.map((tr) => ({
+              language: tr.language,
+              name: tr.name,
+              description: tr.description || '',
+              features: tr.features || '',
+              specs: tr.specs || '',
+            }))
+          : activeLanguages.map(l => ({ language: l.code, name: '', description: '', features: '', specs: '' }))
       );
       // Sync prices - combine standard prices and promotion prices
       const standardPricesList = (product.product_prices || []).map((p) => {
