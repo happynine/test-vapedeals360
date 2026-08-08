@@ -557,13 +557,29 @@ export async function DELETE(request: NextRequest) {
     const { searchParams } = new URL(request.url);
     const id = searchParams.get('id');
     if (!id) throw new Error('Missing id parameter');
+    const productId = parseInt(id);
     // 获取产品数据以清理关联的 Vercel Blob 图片
     const { data: product } = await client
       .from('products')
       .select('image_url, image_url_small, home_image_key')
-      .eq('id', parseInt(id))
+      .eq('id', productId)
       .single();
-    const { error } = await client.from('products').delete().eq('id', parseInt(id));
+    // 先删除子表数据，避免外键约束冲突
+    await client.from('product_translations').delete().eq('product_id', productId);
+    await client.from('product_prices').delete().eq('product_id', productId);
+    // 清理促销产品关联
+    const { data: promoProducts } = await client
+      .from('promotion_products')
+      .select('id')
+      .eq('product_id', productId);
+    if (promoProducts) {
+      for (const pp of promoProducts) {
+        await client.from('promotion_product_prices').delete().eq('promotion_product_id', pp.id);
+        await client.from('promotion_product_translations').delete().eq('promotion_product_id', pp.id);
+        await client.from('promotion_products').delete().eq('id', pp.id);
+      }
+    }
+    const { error } = await client.from('products').delete().eq('id', productId);
     if (error) throw new Error(`Delete product failed: ${error.message}`);
     // 清理关联的 Vercel Blob 图片
     if (product) {
