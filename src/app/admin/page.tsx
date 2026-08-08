@@ -590,7 +590,7 @@ export default function AdminPage() {
       const [catRes, storeRes, prodRes, bannerRes] = await Promise.all([
         adminFetch('/api/admin/categories'),
         adminFetch('/api/admin/stores'),
-        adminFetch('/api/admin/products?limit=100'),
+        adminFetch('/api/admin/products?limit=500'),
         adminFetch('/api/admin/banners'),
       ]);
       const catJson = await catRes.json();
