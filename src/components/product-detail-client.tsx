@@ -238,7 +238,8 @@ export function ProductDetailClient({ product, promoBreadcrumb }: { product: Pro
 
   // Parse additional images
   const allImages: string[] = [];
-  if (product.home_image_url || product.image_url) allImages.push(product.home_image_url || product.image_url);
+  if (product.home_image_url) allImages.push(product.home_image_url);
+  if (product.image_url && product.image_url !== product.home_image_url) allImages.push(product.image_url);
   if (product.images) {
     try {
       const extra = typeof product.images === "string" ? JSON.parse(product.images) : product.images;
