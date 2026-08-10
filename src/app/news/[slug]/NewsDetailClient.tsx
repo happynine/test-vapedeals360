@@ -41,6 +41,7 @@ export function NewsDetailClient({ slug, initialArticle }: { slug: string; initi
 
           {page ? (
             <div className="flex gap-8">
+              {/* Main content */}
               <article className="flex-1 min-w-0">
                 <h1 className="text-3xl font-bold mb-6">{page.title || page.slug}</h1>
                 <div
@@ -48,6 +49,7 @@ export function NewsDetailClient({ slug, initialArticle }: { slug: string; initi
                   dangerouslySetInnerHTML={{ __html: (page.content || '').replace(/<p[^>]*>(\s|<br\s*\/?>|&nbsp;|<span[^>]*>\s*(&nbsp;\s*)*\s*<\/span>)*<\/p>/gi, '').replace(/<h[1-6][^>]*>(\s|<br\s*\/?>|&nbsp;|<span[^>]*>\s*(&nbsp;\s*)*\s*<\/span>)*<\/h[1-6]>/gi, '').replace(/<div[^>]*>(\s|<br\s*\/?>|&nbsp;|<span[^>]*>\s*(&nbsp;\s*)*\s*<\/span>)*<\/div>/gi, '') }}
                 />
               </article>
+              {/* Sidebar - Related Articles */}
               <div className="hidden lg:block w-56 shrink-0">
                 <ArticleSidebar type="news" currentSlug={slug} language={language} />
               </div>
