@@ -5,6 +5,7 @@ import { usePathname, useRouter } from 'next/navigation';
 import { useLanguage } from '@/hooks/use-language';
 import { useCurrency } from '@/hooks/use-currency';
 import { useSiteSettings } from '@/components/site-settings-provider';
+import { LAUNCH_STATES } from '@/lib/states';
 
 interface SearchResult {
   slug: string;
@@ -15,7 +16,7 @@ interface SearchResult {
 }
 
 interface SiteHeaderProps {
-  activeTab?: 'vape-deals' | 'best-vapes' | 'news' | '';
+  activeTab?: 'vape-deals' | 'best-vapes' | 'news' | 'shop-by-state' | '';
 }
 
 export function SiteHeader({ activeTab = 'vape-deals' }: SiteHeaderProps) {
@@ -235,6 +236,7 @@ export function SiteHeader({ activeTab = 'vape-deals' }: SiteHeaderProps) {
   }, []);
   const navItems = [
     { href: '/', label: 'Vape Deals', tab: 'vape-deals' },
+    { href: '/vape-laws', label: 'Shop by State', tab: 'shop-by-state', dropdown: true },
     { href: '/best-vapes', label: 'Best Vapes', tab: 'best-vapes' },
     { href: '/news', label: 'News', tab: 'news' },
   ];
@@ -453,15 +455,50 @@ export function SiteHeader({ activeTab = 'vape-deals' }: SiteHeaderProps) {
         <div className="border-t border-gray-800">
           <div className="mx-auto max-w-[1440px] px-4 sm:px-6 lg:px-8">
             <div className="flex items-center gap-6 h-12">
-              {navItems.map(item => (
-                <Link
-                  key={item.tab}
-                  href={item.href}
-                  className={`text-sm font-semibold transition-colors ${activeTab === item.tab ? 'text-white' : 'text-gray-400 hover:text-white'}`}
-                >
-                  {item.label}
-                </Link>
-              ))}
+              {navItems.map(item =>
+                'dropdown' in item && item.dropdown ? (
+                  <div key={item.tab} className="relative group h-12 flex items-center">
+                    <Link
+                      href={item.href}
+                      className={`flex items-center gap-1 text-sm font-semibold transition-colors ${activeTab === item.tab ? 'text-white' : 'text-gray-400 group-hover:text-white'}`}
+                    >
+                      {item.label}
+                      <svg className="h-3 w-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+                      </svg>
+                    </Link>
+                    <div className="absolute left-0 top-full pt-1 invisible opacity-0 group-hover:visible group-hover:opacity-100 transition-all duration-150 z-50">
+                      <div className="w-56 rounded-xl border border-gray-700 bg-[#1a1a24] shadow-2xl py-2 overflow-hidden">
+                        {LAUNCH_STATES.map(s => (
+                          <Link
+                            key={s.code}
+                            href={`/vape-laws/${s.slug}`}
+                            className="flex items-center justify-between px-4 py-2.5 text-sm text-gray-300 transition-colors hover:bg-[#2a2a3a] hover:text-white"
+                          >
+                            <span>{s.name}</span>
+                            <span className="text-xs font-semibold text-gray-500">{s.code}</span>
+                          </Link>
+                        ))}
+                        <div className="my-1 border-t border-gray-800" />
+                        <Link
+                          href="/vape-laws"
+                          className="block px-4 py-2.5 text-sm font-semibold text-purple-400 transition-colors hover:bg-[#2a2a3a]"
+                        >
+                          All states &amp; state rules →
+                        </Link>
+                      </div>
+                    </div>
+                  </div>
+                ) : (
+                  <Link
+                    key={item.tab}
+                    href={item.href}
+                    className={`text-sm font-semibold transition-colors ${activeTab === item.tab ? 'text-white' : 'text-gray-400 hover:text-white'}`}
+                  >
+                    {item.label}
+                  </Link>
+                )
+              )}
               {/* About Hover Dropdown */}
               <div className="relative group h-12 flex items-center">
                 <button
@@ -775,8 +812,27 @@ export function SiteHeader({ activeTab = 'vape-deals' }: SiteHeaderProps) {
                   }`}
                 >
                   {item.label}
+                  {'dropdown' in item && item.dropdown && (
+                    <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+                    </svg>
+                  )}
                 </Link>
               ))}
+              {/* Shop by State quick links (mobile) */}
+              <div className="pb-1">
+                {LAUNCH_STATES.map(s => (
+                  <Link
+                    key={s.code}
+                    href={`/vape-laws/${s.slug}`}
+                    onClick={() => setMobileMenuOpen(false)}
+                    className="flex items-center justify-between px-9 py-2.5 text-sm text-gray-500 hover:text-white hover:bg-[#1a1a24] transition-colors"
+                  >
+                    <span>{s.name} vape laws</span>
+                    <span className="text-xs font-semibold text-gray-600">{s.code}</span>
+                  </Link>
+                ))}
+              </div>
               <div className="my-2 mx-5 border-t border-gray-800" />
               {aboutLinks.map(l => (
                 <Link
