@@ -481,7 +481,7 @@ export function SiteHeader({ activeTab = 'vape-deals' }: SiteHeaderProps) {
                         ))}
                         <div className="my-1 border-t border-gray-800" />
                         <Link
-                          href="/vape-laws"
+                          href="/vape-laws/laws"
                           className="block px-4 py-2.5 text-sm font-semibold text-purple-400 transition-colors hover:bg-[#2a2a3a]"
                         >
                           All states &amp; state rules →
@@ -832,6 +832,13 @@ export function SiteHeader({ activeTab = 'vape-deals' }: SiteHeaderProps) {
                     <span className="text-xs font-semibold text-gray-600">{s.code}</span>
                   </Link>
                 ))}
+                <Link
+                  href="/vape-laws/laws"
+                  onClick={() => setMobileMenuOpen(false)}
+                  className="flex items-center px-9 py-2.5 text-sm font-semibold text-purple-400 hover:text-white hover:bg-[#1a1a24] transition-colors"
+                >
+                  All states &amp; state rules →
+                </Link>
               </div>
               <div className="my-2 mx-5 border-t border-gray-800" />
               {aboutLinks.map(l => (

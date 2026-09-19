@@ -10,6 +10,7 @@ import ImageCropModal from '@/components/ImageCropModal';
 import { useSupabaseConfig } from '@/lib/supabase-config-inject';
 import { getSupabaseBrowserClientWithRetry } from '@/lib/supabase-browser';
 import { getImageUrl } from '@/lib/image-url';
+import { ALL_STATES } from '@/lib/states';
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } from 'recharts';
 
 // Currency options with flag, code, and symbol
@@ -271,7 +272,10 @@ import('quill').then((mod) => {
 interface CategoryTranslation { id: number; category_id: number; language: string; name: string; }
 interface Category { id: number; slug: string; icon: string | null; sort_order: number; is_active: boolean; category_translations: CategoryTranslation[]; }
 interface StoreTranslation { id: number; store_id: number; language: string; name: string; }
-interface Store { id: number; slug: string; logo_url: string | null; logo_key: string | null; website_url: string | null; website_urls: Array<{url: string; label?: string}>; store_type: string; is_active: boolean; regions: Array<{region: string; currency: string}>; notes: string; store_translations: StoreTranslation[]; }
+type UsSiteType = 'domestic' | 'international';
+type UsShipFrom = 'us_warehouse' | 'intl_warehouse';
+interface StoreRegion { region: string; currency: string; us_site_type?: UsSiteType; us_ship_from?: UsShipFrom; banned_states?: string[]; }
+interface Store { id: number; slug: string; logo_url: string | null; logo_key: string | null; website_url: string | null; website_urls: Array<{url: string; label?: string}>; store_type: string; is_active: boolean; regions: StoreRegion[]; notes: string; store_translations: StoreTranslation[]; }
 interface ProductTranslation { id: number; product_id: number; language: string; name: string; description: string | null; features: string | null; specs: string | null; }
 interface ProductPrice { id: number; product_id: number; store_id: number; current_price: string; original_price: string | null; product_url: string; in_stock: boolean; discount_percent: number | null; currency: string; region: string; no_quote?: boolean; }
 interface BannerTranslation { id: number; banner_id: number; language: string; image_key: string | null; title: string | null; subtitle: string | null; }
@@ -6407,7 +6411,7 @@ function StoreFormModal({ store, onSave, lang, defaultType, activeLanguages, all
   });
   const [storeType, setStoreType] = useState<'store' | 'official'>((store?.store_type === 'official' ? 'official' : store?.store_type === 'store' ? 'store' : null) || defaultType || 'store');
   const [isActive, setIsActive] = useState(store?.is_active !== false);
-  const [regions, setRegions] = useState<Array<{region: string; currency: string}>>(Array.isArray(store?.regions) && store.regions.length > 0 ? store.regions : []);
+  const [regions, setRegions] = useState<StoreRegion[]>(Array.isArray(store?.regions) && store.regions.length > 0 ? store.regions : []);
   const [notes, setNotes] = useState(store?.notes || '');
   const [currencyDropdownOpen, setCurrencyDropdownOpen] = useState(false);
   const [currencyDropdownIdx, setCurrencyDropdownIdx] = useState<number | null>(null);
@@ -6437,6 +6441,20 @@ function StoreFormModal({ store, onSave, lang, defaultType, activeLanguages, all
     const newRegions = [...regions];
     newRegions[idx] = { ...newRegions[idx], [field]: value };
     setRegions(newRegions);
+  };
+  // 美国专区扩展字段（仅对 USD 那条货币生效）
+  const [bannedDropdownIdx, setBannedDropdownIdx] = useState<number | null>(null);
+  const updateUsField = (idx: number, field: 'us_site_type' | 'us_ship_from', value: string) => {
+    const next = [...regions];
+    next[idx] = { ...next[idx], [field]: value } as StoreRegion;
+    setRegions(next);
+  };
+  const toggleBannedState = (idx: number, code: string) => {
+    const next = [...regions];
+    const cur = new Set(next[idx].banned_states || []);
+    if (cur.has(code)) cur.delete(code); else cur.add(code);
+    next[idx] = { ...next[idx], banned_states: Array.from(cur) };
+    setRegions(next);
   };
   const [translations, setTranslations] = useState<{ language: string; name: string }[]>(
     (store?.store_translations && store.store_translations.length > 0)
@@ -6592,7 +6610,8 @@ function StoreFormModal({ store, onSave, lang, defaultType, activeLanguages, all
                 <label className="text-xs text-muted-foreground text-left block">{t('Currency', '货币', lang)}</label>
                 <div className="mt-1 space-y-2">
                   {regions.map((r, idx) => (
-                    <div key={idx} className="flex items-center gap-2">
+                    <div key={idx} className="rounded-lg border border-border/70 p-2 space-y-2">
+                    <div className="flex items-center gap-2">
                       <div className="relative flex-1">
                         <button
                           type="button"
@@ -6638,6 +6657,70 @@ function StoreFormModal({ store, onSave, lang, defaultType, activeLanguages, all
                       <button type="button" onClick={() => removeRegion(idx)} className="p-1 rounded hover:bg-destructive/10 text-destructive">
                         <X className="w-4 h-4" />
                       </button>
+                    </div>
+                      {/* USD 专属：美国专区属性（分类 / 发货地 / 禁售州） */}
+                      {r.currency === 'USD' && (
+                        <div className="space-y-2 rounded-md bg-secondary/50 p-2">
+                          <div className="grid grid-cols-2 gap-2">
+                            <div>
+                              <label className="text-[11px] text-muted-foreground text-left block">{t('US zone category', '美国专区分类', lang)}</label>
+                              <select
+                                value={r.us_site_type || ''}
+                                onChange={(e) => updateUsField(idx, 'us_site_type', e.target.value)}
+                                className="mt-0.5 w-full rounded-lg border border-border bg-secondary px-2 py-1.5 text-sm"
+                              >
+                                <option value="">{t('Unspecified (hidden)', '未指定（不展示）', lang)}</option>
+                                <option value="domestic">{t('US domestic store', '美国本土站', lang)}</option>
+                                <option value="international">{t('International store', '国际站', lang)}</option>
+                              </select>
+                            </div>
+                            <div>
+                              <label className="text-[11px] text-muted-foreground text-left block">{t('Ships from', '发货地', lang)}</label>
+                              <select
+                                value={r.us_ship_from || ''}
+                                onChange={(e) => updateUsField(idx, 'us_ship_from', e.target.value)}
+                                className="mt-0.5 w-full rounded-lg border border-border bg-secondary px-2 py-1.5 text-sm"
+                              >
+                                <option value="">{t('Unspecified (hidden)', '未指定（不展示）', lang)}</option>
+                                <option value="us_warehouse">{t('US warehouse', '美国仓', lang)}</option>
+                                <option value="intl_warehouse">{t('International warehouse', '国际仓', lang)}</option>
+                              </select>
+                            </div>
+                          </div>
+                          <div className="relative">
+                            <label className="text-[11px] text-muted-foreground text-left block">{t('US banned states (hidden there)', '美国禁售州（在这些州隐藏）', lang)}</label>
+                            <button
+                              type="button"
+                              onClick={() => setBannedDropdownIdx(bannedDropdownIdx === idx ? null : idx)}
+                              className="mt-0.5 w-full rounded-lg border border-border bg-secondary px-2 py-1.5 text-sm text-left flex items-center justify-between"
+                            >
+                              <span className="truncate">
+                                {(r.banned_states && r.banned_states.length > 0)
+                                  ? r.banned_states.join(', ')
+                                  : t('None — ships nationwide', '无（全国可售）', lang)}
+                              </span>
+                              <svg className="w-4 h-4 text-muted-foreground shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" /></svg>
+                            </button>
+                            {bannedDropdownIdx === idx && (
+                              <>
+                                <div className="fixed inset-0 z-40" onClick={() => setBannedDropdownIdx(null)} />
+                                <div className="absolute z-50 mt-1 w-full max-h-56 overflow-y-auto rounded-lg border border-border bg-card shadow-lg p-1">
+                                  {ALL_STATES.map((s) => {
+                                    const checked = !!(r.banned_states || []).includes(s.code);
+                                    return (
+                                      <label key={s.code} className="flex items-center gap-2 px-2 py-1 text-sm rounded hover:bg-secondary cursor-pointer">
+                                        <input type="checkbox" checked={checked} onChange={() => toggleBannedState(idx, s.code)} className="rounded" />
+                                        <span className="flex-1">{s.name}</span>
+                                        <span className="text-xs text-muted-foreground font-semibold">{s.code}</span>
+                                      </label>
+                                    );
+                                  })}
+                                </div>
+                              </>
+                            )}
+                          </div>
+                        </div>
+                      )}
                     </div>
                   ))}
                   <button type="button" onClick={addRegion} className="text-xs text-primary hover:underline">

@@ -97,7 +97,8 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
   // Shop by State Hub + the 5 full-content launch states.
   // Non-launch (generic/noindex) state pages are intentionally excluded.
   const vapeLawPages: MetadataRoute.Sitemap = [
-    { url: `${baseUrl}/vape-laws`, lastModified: new Date('2026-09-19'), changeFrequency: 'weekly', priority: 0.7 },
+    { url: `${baseUrl}/vape-laws`, lastModified: new Date('2026-09-20'), changeFrequency: 'daily', priority: 0.8 },
+    { url: `${baseUrl}/vape-laws/laws`, lastModified: new Date('2026-09-20'), changeFrequency: 'weekly', priority: 0.7 },
     ...LAUNCH_STATES.map((s) => ({
       url: `${baseUrl}/vape-laws/${s.slug}`,
       lastModified: new Date('2026-09-19'),

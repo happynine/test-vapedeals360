@@ -79,6 +79,7 @@ function LaunchedStatePage({ content: c }: { content: StateLawContent }) {
     itemListElement: [
       { '@type': 'ListItem', position: 1, name: 'Home', item: SITE_URL },
       { '@type': 'ListItem', position: 2, name: 'Shop by State', item: `${SITE_URL}/vape-laws` },
+      { '@type': 'ListItem', position: 3, name: 'Vape Laws', item: `${SITE_URL}/vape-laws/laws` },
       { '@type': 'ListItem', position: 3, name: c.name, item: `${SITE_URL}/vape-laws/${c.slug}` },
     ],
   };
@@ -101,6 +102,8 @@ function LaunchedStatePage({ content: c }: { content: StateLawContent }) {
             <Link href="/" className="hover:text-purple-600">Home</Link>
             <span className="mx-1">/</span>
             <Link href="/vape-laws" className="hover:text-purple-600">Shop by State</Link>
+            <span className="mx-1">/</span>
+            <Link href="/vape-laws/laws" className="hover:text-purple-600">Vape Laws</Link>
             <span className="mx-1">/</span>
             <span>{c.name}</span>
           </nav>
@@ -212,6 +215,8 @@ function GenericStatePage({ name, code }: { name: string; code: string }) {
             <span className="mx-1">/</span>
             <Link href="/vape-laws" className="hover:text-purple-600">Shop by State</Link>
             <span className="mx-1">/</span>
+            <Link href="/vape-laws/laws" className="hover:text-purple-600">Vape Laws</Link>
+            <span className="mx-1">/</span>
             <span>{name}</span>
           </nav>
           <div className="flex items-center gap-3">
@@ -246,7 +251,7 @@ function GenericStatePage({ name, code }: { name: string; code: string }) {
 
         <div className="mt-8 flex flex-wrap gap-3">
           <Link
-            href="/vape-laws"
+            href="/vape-laws/laws"
             className="rounded-xl border border-gray-300 px-4 py-2.5 text-sm font-semibold text-gray-700 hover:border-purple-300 hover:text-purple-700"
           >
             ← Back to all states
