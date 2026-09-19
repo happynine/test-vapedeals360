@@ -3,10 +3,13 @@
 import { useEffect, useState, useCallback, useRef } from "react";
 import { useSearchParams, useRouter, usePathname } from "next/navigation";
 import { useLanguage } from "@/hooks/use-language";
+import { useCurrency } from "@/hooks/use-currency";
 import Link from "next/link";
 import { SafeImage } from "@/components/safe-image";
 import { ChevronLeft, ChevronRight } from "lucide-react";
+import { BorderBeam } from "antd";
 import BannerCarousel from "./banner-carousel";
+import { cleanAffiliateUrl } from "@/lib/seo";
 
 // Types
 interface CategoryTranslation {
@@ -56,6 +59,16 @@ interface ProductPrice {
   region?: string;
   no_quote?: boolean;
   store?: Store;
+  promotion_id?: number | null;
+  promo_price?: string | null;
+}
+
+/** Display price: active promotion uses promo_price, otherwise current_price */
+function getDisplayPrice(p: ProductPrice): string {
+  if (p.promotion_id != null && p.promo_price != null && p.promo_price !== '') {
+    return p.promo_price;
+  }
+  return p.current_price;
 }
 
 interface ProductTranslation {
@@ -140,70 +153,12 @@ function getTranslation<T extends { language: string }>(translations: T[] | unde
   return translations.find(t => t.language === language) || translations.find(t => t.language === "en") || translations[0];
 }
 
-// 货币定义：国旗 emoji + 货币代码 + 货币符号
-// 货币定义：国旗图片 URL + 货币代码 + 货币符号
-// 使用 flagcdn.com 的国旗图片
-type Currency = {
-  code: string;
-  symbol: string;
-  flag: string;
-  flagAlt: string;
-  name: string;
-};
-
-const CURRENCIES: Currency[] = [
-  { code: 'USD', symbol: '$', flag: '/flags/us.png', flagAlt: 'US', name: 'US Dollar' },
-  { code: 'JPY', symbol: '¥', flag: '/flags/jp.png', flagAlt: 'JP', name: 'Japanese Yen' },
-  { code: 'KRW', symbol: '₩', flag: '/flags/kr.png', flagAlt: 'KR', name: 'Korean Won' },
-  { code: 'AUD', symbol: 'A$', flag: '/flags/au.png', flagAlt: 'AU', name: 'Australian Dollar' },
-  { code: 'GBP', symbol: '£', flag: '/flags/gb.png', flagAlt: 'GB', name: 'British Pound' },
-  { code: 'EUR', symbol: '€', flag: '/flags/eu.png', flagAlt: 'EU', name: 'Euro' },
-  { code: 'RUB', symbol: '₽', flag: '/flags/ru.png', flagAlt: 'RU', name: 'Russian Ruble' },
-  { code: 'CAD', symbol: 'C$', flag: '/flags/ca.png', flagAlt: 'CA', name: 'Canadian Dollar' },
-  { code: 'IDR', symbol: 'Rp', flag: '/flags/id.png', flagAlt: 'ID', name: 'Indonesian Rupiah' },
-];
-
-
-// 多语言货币名称
-const CURRENCY_NAMES: Record<string, Record<string, string>> = {
-  en: {
-    USD: 'US Dollar',
-    JPY: 'Japanese Yen',
-    KRW: 'Korean Won',
-    AUD: 'Australian Dollar',
-    GBP: 'British Pound',
-    EUR: 'Euro',
-    RUB: 'Russian Ruble',
-    CAD: 'Canadian Dollar',
-    IDR: 'Indonesian Rupiah',
-  },
-  zh: {
-    USD: '美元',
-    JPY: '日元',
-    KRW: '韩元',
-    AUD: '澳元',
-    GBP: '英镑',
-    EUR: '欧元',
-    RUB: '卢布',
-    CAD: '加元',
-    IDR: '印尼盾',
-  },
-  ja: {
-    USD: '米ドル',
-    JPY: '日本円',
-    KRW: '韓国ウォン',
-    AUD: 'オーストラリアドル',
-    GBP: '英国ポンド',
-    EUR: 'ユーロ',
-    RUB: 'ロシアルーブル',
-    CAD: 'カナダドル',
-    IDR: 'インドネシアルピア',
-  },
-};
+// Currency list/labels live in src/lib/currencies.ts and are driven globally
+// by the useCurrency hook + the header selector.
 
 function getLowestPrice(prices: ProductPrice[]): ProductPrice | null {
   if (!prices || prices.length === 0) return null;
-  return prices.reduce((min, p) => parseFloat(p.current_price) < parseFloat(min.current_price) ? p : min, prices[0]);
+  return prices.reduce((min, p) => parseFloat(getDisplayPrice(p)) < parseFloat(getDisplayPrice(min)) ? p : min, prices[0]);
 }
 
 function getHighestOriginal(prices: ProductPrice[]): string | null {
@@ -230,7 +185,7 @@ function getDiscountDisplay(prices: ProductPrice[]): { type: 'save'; currency: s
 
     for (const [cur, curPrices] of Object.entries(byCurrency)) {
       if (curPrices.length < 2) continue;
-      const priceValues = curPrices.map(p => parseFloat(p.current_price));
+      const priceValues = curPrices.map(p => parseFloat(getDisplayPrice(p)));
       const high = Math.max(...priceValues);
       const low = Math.min(...priceValues);
       const diff = high - low;
@@ -245,7 +200,7 @@ function getDiscountDisplay(prices: ProductPrice[]): { type: 'save'; currency: s
     if (maxDiff === 0) {
       const firstCurrency = Object.keys(byCurrency)[0] || '$';
       const curPrices = byCurrency[firstCurrency] || prices;
-      const priceValues = curPrices.map(p => parseFloat(p.current_price));
+      const priceValues = curPrices.map(p => parseFloat(getDisplayPrice(p)));
       highestPrice = Math.max(...priceValues);
       lowestPrice = Math.min(...priceValues);
       maxDiff = highestPrice - lowestPrice;
@@ -257,7 +212,7 @@ function getDiscountDisplay(prices: ProductPrice[]): { type: 'save'; currency: s
 
   const price = prices[0];
   if (price.original_price) {
-    const current = parseFloat(price.current_price);
+    const current = parseFloat(getDisplayPrice(price));
     const original = parseFloat(price.original_price);
     if (original > current) {
       const percent = Math.round((original - current) / original * 100);
@@ -268,8 +223,35 @@ function getDiscountDisplay(prices: ProductPrice[]): { type: 'save'; currency: s
   return null;
 }
 
+const PRODUCT_CACHE_PREFIX = 'vd360_product_cache_';
+
+function buildCacheKey(language: string, page: number, category: number | null, currency: string, search: string, sortBy: string): string {
+  return `${language}_p${page}_c${category ?? 0}_cur${currency}_s${search}_sort${sortBy}`;
+}
+
+function getCachedProducts(key: string): { products: Product[]; totalPages: number; total: number; categories: Category[] } | null {
+  try {
+    const raw = sessionStorage.getItem(PRODUCT_CACHE_PREFIX + key);
+    if (!raw) return null;
+    return JSON.parse(raw);
+  } catch {
+    return null;
+  }
+}
+
+function setCachedProducts(key: string, data: { products: Product[]; totalPages: number; total: number; categories: Category[] }) {
+  try {
+    sessionStorage.setItem(PRODUCT_CACHE_PREFIX + key, JSON.stringify(data));
+  } catch {
+    // sessionStorage full, ignore
+  }
+}
+
 export function ProductListClient({ initialData }: { initialData: InitialData }) {
   const { language } = useLanguage();
+  // Global, site-wide currency (mirrors the language selector; persisted in a
+  // cookie so SSR blocks use the same currency). Switching reloads the page.
+  const { currencyCode: selectedCurrencyCode, currencySymbol: selectedCurrency } = useCurrency();
   const searchParams = useSearchParams();
   const router = useRouter();
   const pathname = usePathname();
@@ -277,7 +259,6 @@ export function ProductListClient({ initialData }: { initialData: InitialData })
   // Initial state from server
   const [categories, setCategories] = useState<Category[]>(initialData.categories);
   const [products, setProducts] = useState<Product[]>(initialData.products);
-  const [featuredProducts, setFeaturedProducts] = useState<Product[]>(initialData.featuredProducts);
   const [banners, setBanners] = useState<Banner[]>(initialData.banners);
   const [promotions, setPromotions] = useState<Promotion[]>(initialData.promotions);
   const [totalPages, setTotalPages] = useState(initialData.pagination.totalPages);
@@ -295,13 +276,21 @@ export function ProductListClient({ initialData }: { initialData: InitialData })
   const [loading, setLoading] = useState(false);
   const [mounted, setMounted] = useState(false);
   const [isInitialLoad, setIsInitialLoad] = useState(true);
-  // 默认选择美元
-  const [selectedCurrencyCode, setSelectedCurrencyCode] = useState<string>("USD");
-  const [selectedCurrency, setSelectedCurrency] = useState<string>("$");
     const hasFetchedRef = useRef(false);
 
   // Fetch data when filters change (after initial load)
   const fetchData = useCallback(async () => {
+    const cacheKey = buildCacheKey(language, page, selectedCategory, selectedCurrency, searchQuery, sortBy);
+    const cached = getCachedProducts(cacheKey);
+    if (cached) {
+      setProducts(cached.products);
+      setTotalPages(cached.totalPages);
+      setTotal(cached.total);
+      setCategories(cached.categories);
+      setLoading(false);
+      return;
+    }
+
     setLoading(true);
     try {
       const params = new URLSearchParams({
@@ -312,7 +301,11 @@ export function ProductListClient({ initialData }: { initialData: InitialData })
 
       if (selectedCategory) params.set("category_id", selectedCategory.toString());
       if (searchQuery) params.set("search", searchQuery);
-      if (selectedCurrencyCode) params.set("currency", selectedCurrencyCode);
+      if (selectedCurrency) params.set("currency", selectedCurrency);
+      // Home view (no category/search filters): only products the admin marked
+      // Featured are listed. Category/search views keep the full catalog for
+      // those conditions. When nothing is featured, the grid stays empty.
+      if (!selectedCategory && !searchQuery) params.set("featured", "true");
       if (sortBy === "newest") {
         params.set("sort_by", "id");
         params.set("sort_order", "desc");
@@ -328,12 +321,14 @@ export function ProductListClient({ initialData }: { initialData: InitialData })
         setCategories(json.data.categories || []);
         // Auto-fill: if filtered products are less than 20, fetch next page
         let allProducts = json.data.products || [];
-        const validProducts = allProducts.filter((p: Product) => 
-          p.prices.some((pr: ProductPrice) => !pr.no_quote && (!pr.store || pr.store.is_active))
+        const validProducts = allProducts.filter((p: Product) =>
+          p.prices.some((pr: ProductPrice) =>
+            !pr.no_quote && (!pr.store || pr.store.is_active) && (pr.currency || '$') === selectedCurrency
+          )
         );
         
         // If we have less than 20 valid products and there are more pages, fetch next page
-        if (validProducts.length < 20 && json.data.pagination?.hasMore) {
+        if (validProducts.length < 20 && page < (json.data.pagination?.totalPages || 1)) {
           const nextPage = page + 1;
           const nextParams = new URLSearchParams(params);
           nextParams.set("page", nextPage.toString());
@@ -347,14 +342,16 @@ export function ProductListClient({ initialData }: { initialData: InitialData })
         setProducts(allProducts);
         setTotalPages(json.data.pagination?.totalPages || 1);
         setTotal(json.data.pagination?.total || 0);
+        setCachedProducts(cacheKey, {
+          products: allProducts,
+          totalPages: json.data.pagination?.totalPages || 1,
+          total: json.data.pagination?.total || 0,
+          categories: json.data.categories || [],
+        });
       }
 
-      // Fetch featured and banners only on first page without filters
+      // Fetch banners and promotions only on first page without filters
       if (page === 1 && !selectedCategory && !searchQuery) {
-        const featRes = await fetch(`/api/products?featured=true&limit=5&language=${language}`);
-        const featJson = await featRes.json();
-        if (featJson.success) setFeaturedProducts(featJson.data.products || []);
-
         const bannerRes = await fetch(`/api/banners?language=${language}`);
         const bannerJson = await bannerRes.json();
         if (bannerJson.success) setBanners(bannerJson.data || []);
@@ -372,17 +369,8 @@ export function ProductListClient({ initialData }: { initialData: InitialData })
     }
   }, [language, page, selectedCategory, selectedCurrencyCode, selectedCurrency, searchQuery, sortBy]);
 
-  // Mount effect - read from sessionStorage
+  // Mount effect
   useEffect(() => {
-    const savedCurrencyCode = sessionStorage.getItem('selectedCurrencyCode');
-    
-    if (savedCurrencyCode) {
-      const currency = CURRENCIES.find(c => c.code === savedCurrencyCode);
-      if (currency) {
-        setSelectedCurrencyCode(currency.code);
-        setSelectedCurrency(currency.symbol);
-      }
-    }
     setMounted(true);
     // If URL page > 1, need to fetch correct data (server only returns page 1)
     if (urlPage > 1) {
@@ -390,8 +378,10 @@ export function ProductListClient({ initialData }: { initialData: InitialData })
       hasFetchedRef.current = true;
       fetchData();
     } else {
-      // Use initial data on first load, skip fetch
+      // Use initial data on first load, skip fetch. Currency is global and the
+      // server already rendered initialData for the visitor's selected currency.
       setIsInitialLoad(false);
+      hasFetchedRef.current = true;
     }
   }, []);
 
@@ -454,7 +444,7 @@ export function ProductListClient({ initialData }: { initialData: InitialData })
         return (p.currency || '$') === selectedCurrency;
       });
       const lowest = getLowestPrice(filtered);
-      return lowest ? parseFloat(lowest.current_price) : null;
+      return lowest ? parseFloat(getDisplayPrice(lowest)) : null;
     };
 
     if (sortBy === "price_low") {
@@ -472,6 +462,15 @@ export function ProductListClient({ initialData }: { initialData: InitialData })
     }
     return list;
   })();
+
+  // 渲染前过滤掉没有当前货币价格的产品，避免 grid 中 map return null 留下空位。
+  const displayProducts = filteredProducts.filter((product) =>
+    product.prices.some((p) => {
+      if (p.no_quote) return false;
+      if (p.store && !p.store.is_active) return false;
+      return (p.currency || '$') === selectedCurrency;
+    })
+  );
 
   return (
     <div className="min-h-screen flex flex-col">
@@ -520,122 +519,15 @@ export function ProductListClient({ initialData }: { initialData: InitialData })
                   </div>
                 </Link>
               );
-            })}
-          </div>
-        </div>
-      )}
-
-      {/* Featured Products */}
-      {featuredProducts.length > 0 && page === 1 && !selectedCategory && !searchQuery && (
-        <div className="mb-8">
-          <div className="flex items-center gap-2 mb-4">
-            <span className="inline-flex items-center gap-1.5 rounded-full bg-red-50 px-3 py-1 text-xs font-semibold text-red-600 animate-pulse-deal">
-              <svg className="h-3 w-3" fill="currentColor" viewBox="0 0 20 20">
-                <path d="M12.395 2.553a1 0 00-1.45-.385c-.345.23-.614.558-.822.88-.214.33-.403.713-.57 1.116-.334.804-.614 1.768-.84 2.734a31.365 31.365 0 00-.613 3.58 2.64 2.64 0 01-.945-1.067c-.328-.68-.398-1.534-.398-2.654A1 0 005.05 6.05 6.981 6.981 0 003 11a7 7 0 1011.95-4.95c-.592-.591-.98-.985-1.348-1.467-.363-.476-.724-1.063-1.207-2.03zM12.12 15.12A3 0 017 13s.879.5 2.5.5c0-1 .5-4 1.25-4.5.5 1 .786 1.293 1.371 1.879A2.99 2.99 0 0113 13a2.99 2.99 0 01-.879 2.121z" />
-              </svg>
-              {language === "zh" ? "今日特价" : "HOT DEALS"}
-            </span>
-          </div>
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-            {featuredProducts.slice(0, 3).map(product => {
-              const t = getTranslation(product.translations, language);
-              // Apply currency filtering to featured products
-              const currencyPrices = product.prices.filter(p => {
-                if (p.no_quote) return false;
-                if (p.store && !p.store.is_active) return false;
-                const priceCurrency = p.currency || '$';
-                return priceCurrency === selectedCurrency;
-              });
-              const displayPrices = currencyPrices;
-              const lowest = getLowestPrice(displayPrices);
-              const highestOrig = getHighestOriginal(displayPrices);
-              const discountInfo = getDiscountDisplay(displayPrices);
-
-              return (
-                <Link
-                  key={product.id}
-                  href={`/product/${product.slug}`}
-                  className="group relative overflow-hidden rounded-2xl border border-gray-200 bg-white p-4 shadow-sm hover:shadow-md hover:border-purple-300 transition-all"
-                >
-                  {discountInfo && (
-                    <div className="absolute top-3 right-3 z-10 rounded-lg bg-red-500 px-2 py-0.5 text-xs font-bold text-white">
-                      {discountInfo.type === 'percent' ? `-${discountInfo.value}%` : `Save ${discountInfo.currency}${discountInfo.amount}`}
-                    </div>
-                  )}
-                  <div className="flex gap-4">
-                    <div className="relative h-24 w-24 flex-shrink-0 overflow-hidden rounded-xl bg-gray-100">
-                      {(product.home_image_url || product.image_url) && (
-                        <SafeImage src={product.home_image_url || product.image_url_small || product.image_url} alt={t?.name || ""} fill className="object-cover" sizes="96px" />
-                      )}
-                    </div>
-                    <div className="flex-1 min-w-0">
-                      <h3 className="text-sm font-semibold text-gray-900 line-clamp-2 group-hover:text-purple-700 transition-colors">
-                        {t?.name}
-                      </h3>
-                      <div className="mt-2 flex items-baseline gap-2">
-                        <span className="text-xl font-bold text-emerald-600 tabular-nums">
-                          {lowest?.currency || '$'}{lowest?.current_price || "—"}
-                        </span>
-                        {highestOrig && displayPrices.length >= 2 && (
-                          <span className="text-xs text-emerald-600 font-medium ml-0.5">
-                            {language === "zh" ? "最低价" : "Lowest"}
-                          </span>
-                        )}
-                        {highestOrig && displayPrices.length < 2 && (
-                          <span className="text-sm text-gray-400 line-through tabular-nums">${highestOrig}</span>
-                        )}
-                      </div>
-                      <p className="mt-1 text-xs text-gray-500">
-                        {displayPrices.length} {language === "zh" ? "家商城比价" : "stores compared"}
-                      </p>
-                    </div>
-                  </div>
-                </Link>
-              );
-            })}
+              })
+              .filter(Boolean)
+              .slice(0, 3)}
           </div>
         </div>
       )}
 
       {/* Filter Controls */}
       <div className="mb-6 space-y-3">
-        {/* Currency Filter */}
-        {!mounted ? (
-          <div className="flex items-center gap-2 overflow-x-auto sm:flex-wrap scrollbar-hide pb-1 sm:pb-0">
-            <span className="text-sm font-semibold text-gray-700 flex-shrink-0">{language === "zh" ? "货币" : "Currency"}</span>
-            <div className="flex gap-2">
-              {CURRENCIES.slice(0, 6).map((currency) => (
-                <div key={currency.code} className="h-7 w-20 rounded-full bg-gray-100 animate-pulse flex-shrink-0" />
-              ))}
-            </div>
-          </div>
-        ) : (
-          <div className="flex items-center gap-2 overflow-x-auto sm:flex-wrap scrollbar-hide pb-1 sm:pb-0">
-            <span className="text-sm font-semibold text-gray-700 flex-shrink-0">{language === "zh" ? "货币" : "Currency"}</span>
-            {CURRENCIES.map((currency) => {
-              const currencyName = CURRENCY_NAMES[language]?.[currency.code] || currency.name;
-              return (
-                <button
-                  key={currency.code}
-                  onClick={() => {
-                    setSelectedCurrencyCode(currency.code);
-                    setSelectedCurrency(currency.symbol);
-                    setPage(1);
-                    sessionStorage.setItem('selectedCurrencyCode', currency.code);
-                  }}
-                  className={`rounded-full px-3 py-1.5 text-sm font-medium transition-all flex items-center gap-1.5 flex-shrink-0 ${
-                    selectedCurrencyCode === currency.code ? "bg-purple-700 text-white" : "bg-gray-100 text-gray-600 hover:bg-gray-200"
-                  }`}
-                >
-                  <img src={currency.flag} alt={currency.flagAlt} className="w-4 h-4 rounded-sm object-cover" />
-                  <span>{currency.code}</span>
-                  <span>({currency.symbol})</span>
-                </button>
-              );
-            })}
-          </div>
-        )}
-
         {/* Category */}
         <div className="flex items-center gap-3 overflow-x-auto sm:flex-wrap scrollbar-hide pb-1 sm:pb-0">
           <span className="text-sm font-semibold text-gray-700 flex-shrink-0">{language === "zh" ? "类型" : "Type"}</span>
@@ -734,7 +626,7 @@ export function ProductListClient({ initialData }: { initialData: InitialData })
             </div>
           ))}
         </div>
-      ) : filteredProducts.length === 0 ? (
+      ) : displayProducts.length === 0 ? (
         <div className="flex flex-col items-center justify-center py-20 text-center">
           <svg className="h-16 w-16 text-gray-300" fill="none" stroke="currentColor" viewBox="0 0 24 24">
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1} d="M20 13V6a2 2 0 00-2-2H6a2 2 0 00-2 2v7m16 0v5a2 2 0 01-2 2H6a2 2 0 01-2-2v-5m16 0h-2.586a1 0 00-.707.293l-2.414 2.414a1 0 01-.707.293h-3.172a1 0 01-.707-.293l-2.414-2.414A1 0 006.586 13H4" />
@@ -743,7 +635,7 @@ export function ProductListClient({ initialData }: { initialData: InitialData })
         </div>
       ) : (
         <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 2xl:grid-cols-5 gap-3 sm:gap-4">
-          {filteredProducts.map((product, idx) => {
+          {displayProducts.map((product, idx) => {
             const t = getTranslation(product.translations, language);
 
             // 直接按货币筛选价格
@@ -761,13 +653,25 @@ export function ProductListClient({ initialData }: { initialData: InitialData })
             const lowest = getLowestPrice(finalPrices);
             const highestOrig = getHighestOriginal(finalPrices);
             const discountInfo = getDiscountDisplay(finalPrices);
-            const sortedPrices = [...finalPrices].sort((a, b) => parseFloat(a.current_price) - parseFloat(b.current_price));
+            const sortedPrices = [...finalPrices].sort((a, b) => parseFloat(getDisplayPrice(a)) - parseFloat(getDisplayPrice(b)));
 
             return (
-              <div
+              <BorderBeam
                 key={product.id}
-                className="group rounded-2xl border border-gray-200 bg-white overflow-hidden shadow-sm hover:shadow-md hover:border-purple-300 transition-all animate-fade-in-up"
+                color={[
+                  { color: "#2f54eb", percent: 0 },
+                  { color: "#722ed1", percent: 44 },
+                  { color: "#ff85c0", percent: 100 },
+                ]}
+                size={120}
+                duration={4}
+                lineWidth={1}
+                outset={0}
+                className="animate-fade-in-up"
                 style={{ animationDelay: `${idx * 50}ms` }}
+              >
+              <div
+                className="group hover-border-beam rounded-2xl border border-gray-200 bg-white overflow-hidden shadow-sm hover:shadow-md transition-all relative"
               >
                 <Link
                   href={`/product/${product.slug}`}
@@ -797,7 +701,7 @@ export function ProductListClient({ initialData }: { initialData: InitialData })
                       {discountInfo.type === 'percent' ? `-${discountInfo.value}%` : `Save ${discountInfo.currency}${discountInfo.amount}`}
                     </div>
                   )}
-                  {product.is_featured && (
+                  {product.is_featured && (selectedCategory || searchQuery) && (
                     <div className="absolute top-2 right-2 z-10 rounded-lg bg-purple-700 px-2 py-0.5 text-xs font-semibold text-white">
                       {language === "zh" ? "精选" : "Featured"}
                     </div>
@@ -811,7 +715,7 @@ export function ProductListClient({ initialData }: { initialData: InitialData })
                   </Link>
                   <div className="mt-1.5 sm:mt-2 flex items-baseline gap-1 sm:gap-2">
                     <span className="text-base sm:text-2xl font-bold text-emerald-600 tabular-nums">
-                      {lowest?.currency || '$'}{lowest?.current_price || "—"}
+                      {lowest?.currency || '$'}{lowest ? getDisplayPrice(lowest) : "—"}
                     </span>
                     {highestOrig && displayPrices.length >= 2 && (
                       <span className="text-[10px] sm:text-xs text-emerald-600 font-medium ml-0.5">
@@ -830,7 +734,7 @@ export function ProductListClient({ initialData }: { initialData: InitialData })
                         <div key={price.id} className="flex items-center justify-between gap-1 rounded-md bg-gray-50 px-2 py-1">
                           <span className="text-[10px] text-gray-500 truncate">{st?.name || "Store"}</span>
                           <span className="text-[10px] font-semibold text-emerald-600 tabular-nums">
-                            {price.currency || '$'}{price.current_price}
+                            {price.currency || '$'}{getDisplayPrice(price)}
                           </span>
                         </div>
                       );
@@ -863,12 +767,12 @@ export function ProductListClient({ initialData }: { initialData: InitialData })
                           </div>
                           <div className="flex items-center gap-2 flex-shrink-0">
                             <span className="text-xs font-semibold text-emerald-600 tabular-nums">
-                              {price.currency || '$'}{price.current_price}
+                              {price.currency || '$'}{getDisplayPrice(price)}
                             </span>
                             <a
-                              href={price.product_url}
+                              href={cleanAffiliateUrl(price.product_url)}
                               target="_blank"
-                              rel="noopener noreferrer"
+                              rel="sponsored nofollow noopener noreferrer"
                               onClick={(e) => {
                                 e.stopPropagation();
                                 const sid = sessionStorage.getItem("vp_session_id") || "";
@@ -894,6 +798,7 @@ export function ProductListClient({ initialData }: { initialData: InitialData })
                   </div>
                 </div>
               </div>
+              </BorderBeam>
             );
           })}
         </div>
@@ -1331,3 +1236,6 @@ function MobileCombinedCarousel({
     </div>
   );
 }
+
+
+

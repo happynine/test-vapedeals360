@@ -133,6 +133,9 @@ html {
 }
 
 /* Quill toolbar sticky - floats at top when scrolling */
+.quill-sticky-toolbar {
+  position: relative;
+}
 .quill-sticky-toolbar .ql-toolbar.ql-snow {
   position: sticky;
   top: 0;
@@ -147,7 +150,7 @@ html {
 }
 .content-pages-editor .quill-sticky-toolbar .ql-toolbar.ql-snow {
   top: 60px;
-  max-width: 1060px;
+  max-width: 1150px;
   margin: 0 auto;
 }
 .admin-dark .ql-container.ql-snow {
@@ -157,9 +160,9 @@ html {
   color: #111827;
   min-height: 200px;
 }
-/* Constrain editor content area to match frontend article width (1060px) */
+/* Constrain editor content area to match frontend article width (1120px content + 30px editor padding) */
 .content-pages-editor .ql-container.ql-snow {
-  max-width: 1060px;
+  max-width: 1150px;
   margin: 0 auto;
 }
 /* Images in editor: display at natural size, scale down only when exceeding editor width */
@@ -870,4 +873,66 @@ body {
 }
 .scrollbar-hide::-webkit-scrollbar {
   display: none;
+}
+
+/* Show antd BorderBeam only on card hover.
+   Do NOT override display — antd gates the beam on @supports(offset-path: rect(...));
+   we only control opacity so its mask/offset-path rendering pipeline stays intact. */
+.hover-border-beam .ant-border-beam {
+  opacity: 0 !important;
+  transition: opacity 0.25s ease;
+}
+.hover-border-beam:hover .ant-border-beam {
+  opacity: 1 !important;
+}
+
+
+/* ===== Table editing floating toolbar ===== */
+.content-pages-editor .table-edit-toolbar {
+  position: absolute;
+  display: none;
+  align-items: center;
+  gap: 2px;
+  padding: 4px 6px;
+  background: #ffffff;
+  border: 1px solid #d1d5db;
+  border-radius: 8px;
+  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.12);
+  z-index: 50;
+  pointer-events: auto;
+}
+.content-pages-editor .table-edit-toolbar button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  padding: 0;
+  border: none;
+  border-radius: 5px;
+  background: transparent;
+  color: #4b5563;
+  cursor: pointer;
+  transition: background 0.15s, color 0.15s;
+}
+.content-pages-editor .table-edit-toolbar button:hover {
+  background: #ede9fe;
+  color: #6d28d9;
+}
+.content-pages-editor .table-edit-toolbar .table-toolbar-sep {
+  display: inline-block;
+  width: 1px;
+  height: 18px;
+  background: #e5e7eb;
+  margin: 0 3px;
+}
+/* Make table cells visually editable in the editor */
+.content-pages-editor .ql-editor .table-wrapper td[contenteditable="true"],
+.content-pages-editor .ql-editor .table-wrapper th[contenteditable="true"] {
+  cursor: text;
+  outline: none;
+}
+.content-pages-editor .ql-editor .table-wrapper td[contenteditable="true"]:focus,
+.content-pages-editor .ql-editor .table-wrapper th[contenteditable="true"]:focus {
+  box-shadow: inset 0 0 0 2px rgba(124, 58, 237, 0.35);
 }

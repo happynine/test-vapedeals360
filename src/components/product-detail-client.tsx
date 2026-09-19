@@ -4,12 +4,8 @@ import { useState, useEffect } from "react";
 import Link from "next/link";
 import { SafeImage } from "@/components/safe-image";
 import { useLanguage } from "@/hooks/use-language";
-
-// 货币代码 → 符号映射（与首页保持一致）
-const CURRENCY_SYMBOLS: Record<string, string> = {
-  USD: '$', JPY: '¥', KRW: '₩', AUD: 'A$',
-  GBP: '£', EUR: '€', RUB: '₽', CAD: 'C$', IDR: 'Rp',
-};
+import { useCurrency } from "@/hooks/use-currency";
+import { cleanAffiliateUrl } from "@/lib/seo";
 
 export interface StoreTranslation {
   id: number;
@@ -45,7 +41,17 @@ export interface ProductPrice {
   time_type?: 'permanent' | 'time_range' | 'countdown';
   start_time?: string | null;
   end_time?: string | null;
-  countdown_action?: 'close' | 'original_price';
+  countdown_action?: 'close' | 'original_price' | 'convert_to_standard' | 'hide';
+  promotion_id?: number | null;
+  promo_price?: string | null;
+}
+
+/** Display price: active promotion uses promo_price, otherwise current_price */
+function getDisplayPrice(p: ProductPrice): string {
+  if (p.promotion_id != null && p.promo_price != null && p.promo_price !== '') {
+    return p.promo_price;
+  }
+  return p.current_price;
 }
 
 export interface ProductTranslation {
@@ -148,15 +154,8 @@ export function ProductDetailClient({ product, promoBreadcrumb }: { product: Pro
   const { language } = useLanguage();
   const [selectedImage, setSelectedImage] = useState<string | null>(product.home_image_url || product.image_url);
 
-  // 读取用户在首页选择的货币（与首页保持一致）
-  const [selectedCurrency, setSelectedCurrency] = useState<string>('$');
-  useEffect(() => {
-    const savedCurrencyCode = sessionStorage.getItem('selectedCurrencyCode');
-    if (savedCurrencyCode) {
-      const symbol = CURRENCY_SYMBOLS[savedCurrencyCode];
-      if (symbol) setSelectedCurrency(symbol);
-    }
-  }, []);
+  // Global, site-wide currency (same selector as the rest of the site).
+  const { currencySymbol: selectedCurrency } = useCurrency();
 
   // Track page view
   useEffect(() => {
@@ -201,7 +200,7 @@ export function ProductDetailClient({ product, promoBreadcrumb }: { product: Pro
   const currencyFiltered = allActivePrices.filter((p) => (p.currency || '$') === selectedCurrency);
   const filteredPrices = currencyFiltered.length > 0 ? currencyFiltered : allActivePrices;
 
-  const sortedPrices = [...filteredPrices].sort((a, b) => parseFloat(a.current_price) - parseFloat(b.current_price));
+  const sortedPrices = [...filteredPrices].sort((a, b) => { const aOos = a.in_stock === false ? 1 : 0; const bOos = b.in_stock === false ? 1 : 0; if (aOos !== bOos) return aOos - bOos; return parseFloat(getDisplayPrice(a)) - parseFloat(getDisplayPrice(b)); });
   const lowestPrice = sortedPrices[0];
 
   // Calculate discount
@@ -214,8 +213,8 @@ export function ProductDetailClient({ product, promoBreadcrumb }: { product: Pro
     const lowestCurrency = lowestPrice.currency;
     const sameCurrencyPrices = filteredPrices.filter((p) => p.currency === lowestCurrency);
     if (sameCurrencyPrices.length >= 2) {
-      const highestCurrent = Math.max(...sameCurrencyPrices.map((p) => parseFloat(p.current_price)));
-      const lowestCurrent = parseFloat(lowestPrice.current_price);
+      const highestCurrent = Math.max(...sameCurrencyPrices.map((p) => parseFloat(getDisplayPrice(p))));
+      const lowestCurrent = parseFloat(getDisplayPrice(lowestPrice));
       discountAmount = highestCurrent - lowestCurrent;
       if (discountAmount > 0) {
         discount = Math.round((discountAmount / highestCurrent) * 100);
@@ -227,7 +226,7 @@ export function ProductDetailClient({ product, promoBreadcrumb }: { product: Pro
     const priceRecord = filteredPrices[0];
     if (priceRecord.original_price) {
       const originalPrice = parseFloat(priceRecord.original_price);
-      const currentPrice = parseFloat(priceRecord.current_price);
+      const currentPrice = parseFloat(getDisplayPrice(priceRecord));
       if (originalPrice > currentPrice) {
         discountAmount = originalPrice - currentPrice;
         discount = Math.round((discountAmount / originalPrice) * 100);
@@ -311,7 +310,7 @@ export function ProductDetailClient({ product, promoBreadcrumb }: { product: Pro
           <div className="mt-4 rounded-2xl border border-gray-200 bg-gray-50 p-5">
             <div className="flex items-baseline gap-3">
               <span className="text-4xl font-bold text-emerald-600 tabular-nums">
-                {lowestPrice?.currency || "$"}{lowestPrice?.current_price || "—"}
+                {lowestPrice?.currency || "$"}{lowestPrice ? getDisplayPrice(lowestPrice) : "—"}
               </span>
               {filteredPrices.length >= 2 && (
                 <span className="text-xs text-emerald-600 font-medium ml-0.5">
@@ -363,11 +362,6 @@ export function ProductDetailClient({ product, promoBreadcrumb }: { product: Pro
           </svg>
           {language === "zh" ? "价格对比" : "Price Comparison"}
         </h2>
-          <p className="mb-3 text-xs text-gray-500">
-          {language === "zh"
-            ? "* 以下价格来自合作商家，我们可能通过购买链接获得佣金。"
-            : "* Prices are from partner stores. We may earn a commission when you purchase through our links."}
-        </p>
         <div className="rounded-2xl border border-gray-200 bg-white overflow-hidden shadow-sm">
           {/* Desktop header */}
           <div className="hidden md:grid grid-cols-7 gap-4 px-5 py-3 bg-gray-50 text-xs font-semibold text-gray-500 uppercase tracking-wider">
@@ -383,7 +377,8 @@ export function ProductDetailClient({ product, promoBreadcrumb }: { product: Pro
           {sortedPrices.map((price, idx) => {
             const st = price.store ? getTranslation(price.store.translations, language) : null;
             const isLowest = idx === 0;
-            const priceDiscount = price.discount_percent || (price.original_price ? Math.round((parseFloat(price.original_price) - parseFloat(price.current_price)) / parseFloat(price.original_price) * 100) : null);
+            const displayPrice = getDisplayPrice(price);
+            const priceDiscount = price.discount_percent || (price.original_price ? Math.round((parseFloat(price.original_price) - parseFloat(displayPrice)) / parseFloat(price.original_price) * 100) : null);
 
             return (
               <div key={price.id} className={`border-t border-gray-100 transition-colors hover:bg-gray-50 ${isLowest ? "bg-emerald-50/50" : ""}`}>
@@ -409,11 +404,16 @@ export function ProductDetailClient({ product, promoBreadcrumb }: { product: Pro
                           {language === "zh" ? "最低价" : "LOWEST"}
                         </span>
                       )}
+                      {price.in_stock === false && (
+                        <span className="ml-2 inline-block rounded bg-red-500/15 px-1.5 py-0.5 text-[10px] font-bold text-red-400">
+                          {language === "zh" ? "缺货" : "OUT OF STOCK"}
+                        </span>
+                      )}
                     </div>
                   </div>
                   <div className="text-center">
-                    <span className={`text-lg font-bold tabular-nums ${isLowest ? "text-emerald-600" : "text-gray-900"}`}>
-                      {price.currency || "$"}{price.current_price}
+                    <span className={`text-lg font-bold tabular-nums ${isLowest ? "text-emerald-600" : (price.promotion_id != null ? "text-red-600" : "text-gray-900")}`}>
+                      {price.currency || "$"}{getDisplayPrice(price)}
                     </span>
                   </div>
                   {/* Countdown column */}
@@ -453,9 +453,9 @@ export function ProductDetailClient({ product, promoBreadcrumb }: { product: Pro
                   </div>
                   <div className="text-center">
                     <a
-                      href={price.product_url}
+                      href={cleanAffiliateUrl(price.product_url)}
                       target="_blank"
-                      rel="noopener noreferrer"
+                      rel="sponsored nofollow noopener noreferrer"
                       onClick={() => {
                         fetch("/api/track", {
                           method: "POST",
@@ -503,12 +503,17 @@ export function ProductDetailClient({ product, promoBreadcrumb }: { product: Pro
                               {language === "zh" ? "最低价" : "LOWEST"}
                             </span>
                           )}
+                          {price.in_stock === false && (
+                            <span className="inline-block rounded bg-red-500/15 px-1.5 py-0.5 text-[10px] font-bold text-red-400 flex-shrink-0">
+                              {language === "zh" ? "缺货" : "OUT OF STOCK"}
+                            </span>
+                          )}
                         </div>
                       </div>
                     </div>
                     <div className="flex items-center gap-2 flex-shrink-0">
-                      <span className={`text-lg font-bold tabular-nums ${isLowest ? "text-emerald-600" : "text-gray-900"}`}>
-                        {price.currency || "$"}{price.current_price}
+                      <span className={`text-lg font-bold tabular-nums ${isLowest ? "text-emerald-600" : (price.promotion_id != null ? "text-red-600" : "text-gray-900")}`}>
+                        {price.currency || "$"}{getDisplayPrice(price)}
                       </span>
                       {priceDiscount && (
                         <span className="inline-block rounded-md bg-red-50 px-1.5 py-0.5 text-xs font-semibold text-red-600">
@@ -543,29 +548,29 @@ export function ProductDetailClient({ product, promoBreadcrumb }: { product: Pro
                       </span>
                     </div>
                     <a
-                      href={price.product_url}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      onClick={() => {
-                        fetch("/api/track", {
-                          method: "POST",
-                          headers: { "Content-Type": "application/json" },
-                          body: JSON.stringify({
-                            type: "visit_store",
-                            session_id: sessionStorage.getItem("vp_session_id") || "",
-                            product_id: product.id,
-                            store_id: price.store_id,
-                          }),
-                        }).catch(() => {});
-                      }}
-                      className="inline-flex items-center gap-1 rounded-xl bg-purple-700 px-3 py-1.5 text-xs font-semibold text-white hover:bg-purple-800 transition-all"
-                    >
-                      {(price.store?.store_type || "store") === "official"
-                        ? language === "zh" ? "前往官网" : "Visit Official"
-                        : language === "zh" ? "前往购买" : "Visit Store"}
-                      <svg className="h-3 w-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" />
-                      </svg>
+                        href={cleanAffiliateUrl(price.product_url)}
+                        target="_blank"
+                        rel="sponsored nofollow noopener noreferrer"
+                        onClick={() => {
+                          fetch("/api/track", {
+                            method: "POST",
+                            headers: { "Content-Type": "application/json" },
+                            body: JSON.stringify({
+                              type: "visit_store",
+                              session_id: sessionStorage.getItem("vp_session_id") || "",
+                              product_id: product.id,
+                              store_id: price.store_id,
+                            }),
+                          }).catch(() => {});
+                        }}
+                        className="inline-flex items-center gap-1 rounded-xl bg-purple-700 px-3 py-1.5 text-xs font-semibold text-white hover:bg-purple-800 transition-all"
+                      >
+                        {(price.store?.store_type || "store") === "official"
+                          ? language === "zh" ? "前往官网" : "Visit Official"
+                          : language === "zh" ? "前往购买" : "Visit Store"}
+                        <svg className="h-3 w-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" />
+                        </svg>
                     </a>
                   </div>
                 </div>
@@ -573,6 +578,16 @@ export function ProductDetailClient({ product, promoBreadcrumb }: { product: Pro
             );
           })}
         </div>
+        <p className="mt-3 text-xs text-gray-500">
+          {language === "zh"
+            ? "* 以下价格来自合作商家，我们可能通过购买链接获得佣金，且您无需支付额外费用。"
+            : "* Prices are from partner stores. We may earn a commission when you purchase through our links. At no extra cost to you."}
+        </p>
+        <p className="mt-2 text-xs leading-relaxed text-gray-400">
+          {language === "zh"
+            ? "VapeDeals360 是一个独立的价格比较与优惠信息网站。我们不是零售商，不直接销售产品。本网站提及的所有产品名称、品牌名称、徽标及零售商名称均为其各自所有者的财产，仅用于描述和比较目的。VapeDeals360 与所列任何品牌或零售商无关联，也未获得其认可或赞助。价格与库存信息来自零售商网站，可能随时变动；购买时以零售商网站显示的最终价格为准。"
+            : "VapeDeals360 is an independent price-comparison and deal-information website. We are not a retailer and do not sell products directly. All product names, brand names, logos, and retailer names mentioned on this site are the property of their respective owners and are used solely for descriptive and comparison purposes. VapeDeals360 is not affiliated with, endorsed by, or sponsored by any of the brands or retailers listed. Prices and availability are sourced from retailer websites and may change at any time; the final price shown on the retailer's website at the time of purchase always applies."}
+        </p>
       </div>
 
       {/* Key Features - between Price Comparison and Specifications */}
@@ -634,3 +649,4 @@ export function ProductDetailClient({ product, promoBreadcrumb }: { product: Pro
     </main>
   );
 }
+

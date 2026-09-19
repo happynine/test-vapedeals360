@@ -1,15 +1,19 @@
 import { Suspense } from "react";
 import { SiteHeader } from "@/components/site-header";
 import { ProductListClient, InitialData } from "@/components/product-list-client";
-import { fetchCategories, fetchProducts, fetchBanners } from "@/lib/database";
+import { fetchCategories, fetchProducts, fetchBanners, countProducts } from "@/lib/database";
 import { isSupabaseConfigured, getSupabaseClient } from "@/storage/database/supabase-client";
 import { getPresignedUrl } from "@/lib/storage";
+import { HomeProductIndex } from "@/components/home-product-index";
+import { getServerCurrency } from "@/lib/server-currency";
 
 // ISR: 每 60 秒重新验证，但跳过构建时预渲染（避免连接海外 Supabase 超时）
 export const revalidate = 60;
 
 // 服务端获取初始数据
 async function getInitialData() {
+  // Global visitor currency (from the `currency` cookie; defaults to USD).
+  const { symbol } = await getServerCurrency();
   // 构建时可能没有 Supabase 环境变量，直接返回空数据
   if (!isSupabaseConfigured()) {
     return {
@@ -24,12 +28,10 @@ async function getInitialData() {
 
   try {
     const supabase = getSupabaseClient();
-    
     // ISR 自身已缓存页面，无需 unstable_cache 双重缓存
-    const [categories, products, featuredProducts, bannersData, promotionsResult] = await Promise.all([
+    const [categories, products, bannersData, promotionsResult] = await Promise.all([
       fetchCategories("en"),
-      fetchProducts({ language: "en", limit: 20, offset: 0 }),
-      fetchProducts({ language: "en", limit: 5, offset: 0, featured: true }),
+      fetchProducts({ language: "en", limit: 20, offset: 0, featured: true, currency: symbol }),
       fetchBanners("en"),
       // 获取 promotions
       supabase
@@ -123,18 +125,13 @@ async function getInitialData() {
       };
     }));
 
-    // 计算总数
-    const countResult = await supabase
-      .from("products")
-      .select("id", { count: "exact", head: true })
-      .eq("is_active", true);
-    
-    const total = countResult.count || 0;
+    // 计算总数（与首页推荐列表一致：只统计有所选币种有效价格的 Featured 产品）
+    const total = await countProducts(undefined, undefined, undefined, symbol, true);
 
     return {
       categories: categories || [],
       products: products || [],
-      featuredProducts: featuredProducts || [],
+      featuredProducts: [],
       banners,
       promotions,
       pagination: {
@@ -211,6 +208,8 @@ export default async function HomePage() {
           <Suspense fallback={<HomePageSkeleton />}>
             <ProductListClient initialData={initialData as unknown as InitialData} />
           </Suspense>
+          {/* Server-rendered crawler-readable product index + ItemList JSON-LD */}
+          <HomeProductIndex />
         </div>
       </main>
     </div>

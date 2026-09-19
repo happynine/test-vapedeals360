@@ -4,47 +4,26 @@ export default function robots(): MetadataRoute.Robots {
   return {
     rules: [
       {
+        // Default: allow all crawlers including AI crawlers/search agents so
+        // product pages can surface in AI answers. Rendering resources under
+        // /_next/ must NOT be blocked — Google needs the JS/CSS to render the
+        // interactive product grid, and _rsc URLs are part of App Router.
         userAgent: '*',
         allow: '/',
-        disallow: ['/api/', '/_next/', '/static/', '/admin', '/*?_rsc=*'],
+        disallow: ['/api/', '/admin'],
       },
       {
-        userAgent: 'Amazonbot',
-        disallow: '/',
-      },
-      {
-        userAgent: 'Applebot-Extended',
-        disallow: '/',
-      },
-      {
+        // ByteDance crawler (Douyin / Doubao): blocked — no CN-market focus.
         userAgent: 'Bytespider',
         disallow: '/',
       },
       {
-        userAgent: 'CCBot',
-        disallow: '/',
-      },
-      {
-        userAgent: 'ClaudeBot',
-        disallow: '/',
-      },
-      {
+        // Internal Cloudflare browser-rendering service, not a traffic-driving crawler.
         userAgent: 'CloudflareBrowserRenderingCrawler',
-        disallow: '/',
-      },
-      {
-        userAgent: 'Google-Extended',
-        disallow: '/',
-      },
-      {
-        userAgent: 'GPTBot',
-        disallow: '/',
-      },
-      {
-        userAgent: 'meta-externalagent',
         disallow: '/',
       },
     ],
     sitemap: 'https://www.vapedeals360.com/sitemap.xml',
+    host: 'https://www.vapedeals360.com',
   };
 }

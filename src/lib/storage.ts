@@ -1,6 +1,6 @@
 import { put, del } from '@vercel/blob';
 import { S3Storage } from 'coze-coding-dev-sdk';
-import { S3Client, PutObjectCommand, DeleteObjectCommand, ListObjectsV2Command } from '@aws-sdk/client-s3';
+import { S3Client, PutObjectCommand, DeleteObjectCommand, DeleteObjectsCommand, CopyObjectCommand, ListObjectsV2Command } from '@aws-sdk/client-s3';
 import { createHash } from 'crypto';
 
 // Priority: R2 > Vercel Blob > S3Storage (Coze sandbox)
@@ -10,22 +10,19 @@ const useVercelBlob = !hasR2 && !!process.env.BLOB_READ_WRITE_TOKEN;
 // R2 public URL base (set in Vercel env vars, e.g. https://images.vapedeals360.com)
 const R2_PUBLIC_URL = process.env.R2_PUBLIC_URL || `https://${process.env.R2_BUCKET_NAME || 'vapedeals360-images'}.r2.dev`;
 
-let s3ClientInstance: S3Client | null = null;
 let s3StorageInstance: S3Storage | null = null;
 
 function getS3Client(): S3Client {
-  if (!s3ClientInstance) {
-    s3ClientInstance = new S3Client({
-      region: 'auto',
-      endpoint: process.env.R2_ENDPOINT || `https://${process.env.R2_ACCOUNT_ID}.r2.cloudflarestorage.com`,
-      credentials: {
-        accessKeyId: process.env.R2_ACCESS_KEY_ID || '',
-        secretAccessKey: process.env.R2_SECRET_ACCESS_KEY || '',
-      },
-      forcePathStyle: true,
-    });
-  }
-  return s3ClientInstance;
+  // Always create a fresh client - Vercel serverless containers may reuse stale connections
+  return new S3Client({
+    region: 'auto',
+    endpoint: process.env.R2_ENDPOINT || `https://${process.env.R2_ACCOUNT_ID}.r2.cloudflarestorage.com`,
+    credentials: {
+      accessKeyId: process.env.R2_ACCESS_KEY_ID || '',
+      secretAccessKey: process.env.R2_SECRET_ACCESS_KEY || '',
+    },
+    forcePathStyle: true,
+  });
 }
 
 export function getS3Storage(): S3Storage {
@@ -53,8 +50,36 @@ function computeContentHash(fileContent: Buffer): string {
 /**
  * Build public URL for an R2 object.
  */
-function buildR2Url(key: string): string {
+export function buildR2Url(key: string): string {
   return `${R2_PUBLIC_URL.replace(/\/$/, '')}/${key}`;
+}
+
+/**
+ * Extract the storage object key from a URL or proxy src.
+ * Returns null if the URL does not belong to our R2 bucket.
+ * Strips query strings (e.g. ?v=timestamp used for cache-busting on overwrite).
+ */
+export function extractKeyFromUrl(url: string): string | null {
+  if (!url) return null;
+  try {
+    // Proxy URL: /api/image?key=xxx
+    const proxyMatch = url.match(/\/api\/image\?key=([^&]+)/);
+    if (proxyMatch) {
+      return decodeURIComponent(proxyMatch[1]).split('?')[0];
+    }
+    if (url.startsWith('http://') || url.startsWith('https://')) {
+      const urlObj = new URL(url);
+      const bucketUrl = R2_PUBLIC_URL.replace(/\/$/, '');
+      const bucketHost = (() => { try { return new URL(bucketUrl).hostname; } catch { return ''; } })();
+      if (urlObj.hostname === bucketHost) {
+        const path = urlObj.pathname.startsWith('/') ? urlObj.pathname.slice(1) : urlObj.pathname;
+        return path.split('?')[0];
+      }
+    }
+    return null;
+  } catch {
+    return null;
+  }
 }
 
 export async function uploadFile(params: {
@@ -63,14 +88,15 @@ export async function uploadFile(params: {
   contentType: string;
   folder?: string;
   entityId?: string;
+  customFileName?: string;
 }): Promise<UploadResult> {
-  const { fileContent, fileName, contentType, folder = 'uploads', entityId } = params;
+  const { fileContent, fileName, contentType, folder = 'uploads', entityId, customFileName } = params;
   const ext = fileName.split('.').pop() || 'jpg';
-  const fileBaseName = entityId ? entityId : computeContentHash(fileContent);
+  const fileBaseName = customFileName || (entityId ? entityId : computeContentHash(fileContent));
 
   // R2 (Cloudflare)
   if (hasR2) {
-    const key = `${folder}/${fileBaseName}.${ext}`;
+    const key = customFileName ? `${folder}/${fileBaseName}` : `${folder}/${fileBaseName}.${ext}`;
     await getS3Client().send(
       new PutObjectCommand({
         Bucket: process.env.R2_BUCKET_NAME,
@@ -96,7 +122,7 @@ export async function uploadFile(params: {
   }
 
   // Coze S3 Storage (dev/sandbox)
-  const key = `${folder}/${fileBaseName}.${ext}`;
+    const key = customFileName ? `${folder}/${fileBaseName}` : `${folder}/${fileBaseName}.${ext}`;
   await getS3Storage().uploadFile({ fileContent, fileName: key, contentType });
   return { key, url: `/api/image?key=${encodeURIComponent(key)}` };
 }
@@ -181,6 +207,48 @@ export async function deleteFile(key: string | null | undefined): Promise<boolea
   }
 }
 
+/**
+ * Delete all objects under a given prefix (e.g. "content/42/").
+ * Used to wipe an entire content page's image directory when the page is deleted.
+ * Lists objects with ListObjectsV2 then batch-deletes them (up to 1000 per request).
+ */
+export async function deleteByPrefix(prefix: string): Promise<number> {
+  if (!prefix) return 0;
+
+  if (hasR2) {
+    const client = getS3Client();
+    const bucket = process.env.R2_BUCKET_NAME!;
+    let totalDeleted = 0;
+    let continuationToken: string | undefined;
+
+    do {
+      const listResp = await client.send(
+        new ListObjectsV2Command({
+          Bucket: bucket,
+          Prefix: prefix,
+          ContinuationToken: continuationToken,
+        })
+      );
+      const objects = (listResp.Contents || []).map(c => ({ Key: c.Key! })).filter(o => !!o.Key);
+      if (objects.length === 0) break;
+
+      await client.send(
+        new DeleteObjectsCommand({
+          Bucket: bucket,
+          Delete: { Objects: objects },
+        })
+      );
+      totalDeleted += objects.length;
+      continuationToken = listResp.IsTruncated ? listResp.NextContinuationToken : undefined;
+    } while (continuationToken);
+
+    return totalDeleted;
+  }
+
+  // Fallback for non-R2 backends: no-op (Vercel Blob / dev storage don't expose prefix listing here)
+  return 0;
+}
+
 export function extractImageKeysFromHtml(html: string | null | undefined): string[] {
   if (!html) return [];
   const imgRegex = /<img[^>]+src=["']([^"']+)["'][^>]*>/gi;
@@ -201,8 +269,9 @@ export async function uploadProductImage(params: {
   contentType: string;
   folder?: string;
   entityId?: string;
+  customFileName?: string;
 }): Promise<{ large: UploadResult; small: UploadResult }> {
-  const { fileContent, fileName, contentType, folder = 'products', entityId } = params;
+  const { fileContent, fileName, contentType, folder = 'products', entityId, customFileName } = params;
   const baseName = fileName.split('.').slice(0, -1).join('.') || 'image';
   const uploadResult = await uploadFile({
     fileContent,
@@ -210,6 +279,7 @@ export async function uploadProductImage(params: {
     contentType,
     folder,
     entityId,
+    customFileName,
   });
   return { large: uploadResult, small: uploadResult };
 }

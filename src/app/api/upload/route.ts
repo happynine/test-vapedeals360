@@ -16,6 +16,15 @@ export async function POST(request: NextRequest) {
     const folder = url.searchParams.get('folder') || 'uploads';
     const isProductImage = url.searchParams.get('product_image') === 'true';
     const entityId = url.searchParams.get('entity_id') || undefined;
+    const slug = url.searchParams.get('slug') || undefined;
+    const imageType = url.searchParams.get('image_type') || undefined;
+    // custom_file_name: when provided, use it as the exact object key suffix under folder.
+    // Enables deterministic paths (e.g. "content/42/img-abc.jpg") for overwrite-on-recrop.
+    const customFileName = url.searchParams.get('custom_file_name') || undefined;
+
+    // SEO naming: when slug and image_type are provided, construct SEO-friendly filename
+    // (customFileName takes priority if both are provided)
+    const seoFileName = (!customFileName && slug && imageType) ? `${slug}-${imageType}.jpg` : customFileName;
 
     // 直接读取原始 body（不使用 request.formData()）
     const arrayBuffer = await request.arrayBuffer();
@@ -36,6 +45,7 @@ export async function POST(request: NextRequest) {
         contentType: contentType,
         folder,
         entityId,
+        customFileName: seoFileName,
       });
 
       return NextResponse.json({
@@ -59,6 +69,7 @@ export async function POST(request: NextRequest) {
         contentType: contentType,
         folder,
         entityId,
+        customFileName: seoFileName,
       });
 
       return NextResponse.json({

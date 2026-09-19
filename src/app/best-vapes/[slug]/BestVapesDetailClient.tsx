@@ -6,6 +6,7 @@ import { SiteHeader } from '@/components/site-header';
 import { ArticleSidebar } from '@/components/article-sidebar';
 import { useLanguage } from '@/hooks/use-language';
 import { useSiteSettings } from '@/components/site-settings-provider';
+import { sanitizeArticleHtml } from '@/lib/seo';
 
 interface ContentPageDetail {
   id: number;
@@ -14,6 +15,10 @@ interface ContentPageDetail {
   cover_image: string | null;
   title: string;
   content: string;
+  disclaimer?: string;
+  disclaimer_hidden?: boolean;
+  ai_disclosure?: string;
+  ai_disclosure_hidden?: boolean;
 }
 
 export function BestVapesDetailClient({ slug, initialArticle }: { slug: string; initialArticle: ContentPageDetail | null }) {
@@ -46,8 +51,20 @@ export function BestVapesDetailClient({ slug, initialArticle }: { slug: string; 
                 <h1 className="text-3xl font-bold mb-6">{page.title || page.slug}</h1>
                 <div
                   className="rich-text-content"
-                  dangerouslySetInnerHTML={{ __html: (page.content || '').replace(/<p[^>]*>(\s|<br\s*\/?>|&nbsp;|<span[^>]*>\s*(&nbsp;\s*)*\s*<\/span>)*<\/p>/gi, '').replace(/<h[1-6][^>]*>(\s|<br\s*\/?>|&nbsp;|<span[^>]*>\s*(&nbsp;\s*)*\s*<\/span>)*<\/h[1-6]>/gi, '').replace(/<div[^>]*>(\s|<br\s*\/?>|&nbsp;|<span[^>]*>\s*(&nbsp;\s*)*\s*<\/span>)*<\/div>/gi, '') }}
+                  dangerouslySetInnerHTML={{ __html: sanitizeArticleHtml(page.content || '').replace(/<p[^>]*>(\s|<br\s*\/?>|&nbsp;|<span[^>]*>\s*(&nbsp;\s*)*\s*<\/span>)*<\/p>/gi, '').replace(/<h[2-6][^>]*>(\s|<br\s*\/?>|&nbsp;|<span[^>]*>\s*(&nbsp;\s*)*\s*<\/span>)*<\/h[2-6]>/gi, '').replace(/<div[^>]*>(\s|<br\s*\/?>|&nbsp;|<span[^>]*>\s*(&nbsp;\s*)*\s*<\/span>)*<\/div>/gi, '') }}
                 />
+                {!page.disclaimer_hidden && page.disclaimer && (
+                  <div className="mt-8 pt-4 border-t border-gray-200 text-sm text-gray-400 leading-relaxed" style={{ fontSize: 14 }}>
+                    <div className="font-medium text-gray-500 mb-1">Disclaimer</div>
+                    <div dangerouslySetInnerHTML={{ __html: page.disclaimer }} />
+                  </div>
+                )}
+                {!page.ai_disclosure_hidden && page.ai_disclosure && (
+                  <div className="mt-4 text-sm text-gray-400 leading-relaxed" style={{ fontSize: 14 }}>
+                    <div className="font-medium text-gray-500 mb-1">AI-Assisted Disclosure</div>
+                    <div dangerouslySetInnerHTML={{ __html: page.ai_disclosure }} />
+                  </div>
+                )}
               </article>
               {/* Sidebar - Related Articles */}
               <div className="hidden lg:block w-56 shrink-0">
@@ -57,9 +74,9 @@ export function BestVapesDetailClient({ slug, initialArticle }: { slug: string; 
           ) : (
             <div className="flex flex-col items-center justify-center py-32">
               {siteSettings?.logo_url ? (
-                <img src={siteSettings.logo_url.startsWith("http") ? siteSettings.logo_url : `/api/image?key=${encodeURIComponent(siteSettings.logo_url)}`} alt={siteSettings.site_name} className="h-16 w-16 rounded-xl object-contain mb-4 animate-pulse" />
+                <img src={siteSettings.logo_url.startsWith("http") ? siteSettings.logo_url : `/api/image?key=${encodeURIComponent(siteSettings.logo_url)}`} alt={siteSettings.site_name} className="h-9 w-9 rounded-xl object-contain mb-4 animate-pulse" />
               ) : (
-                <div className="flex h-16 w-16 items-center justify-center rounded-xl bg-purple-700 text-white font-bold text-2xl mb-4 animate-pulse">{siteSettings?.site_name ? siteSettings.site_name.charAt(0) : '\u00A0'}</div>
+                <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-purple-700 text-white font-bold text-lg mb-4 animate-pulse">{siteSettings?.site_name ? siteSettings.site_name.charAt(0) : '\u00A0'}</div>
               )}
               <h2 className="text-xl font-semibold text-gray-700 mb-2">{siteSettings?.site_name || '\u00A0'}</h2>
               <div className="flex items-center gap-2 text-gray-400">

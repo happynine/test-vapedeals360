@@ -3,6 +3,7 @@ import { useState, useEffect, useRef, useCallback } from 'react';
 import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
 import { useLanguage } from '@/hooks/use-language';
+import { useCurrency } from '@/hooks/use-currency';
 import { useSiteSettings } from '@/components/site-settings-provider';
 
 interface SearchResult {
@@ -20,10 +21,30 @@ interface SiteHeaderProps {
 export function SiteHeader({ activeTab = 'vape-deals' }: SiteHeaderProps) {
   const { siteSettings } = useSiteSettings();
   const { language, setLanguage, activeLanguages } = useLanguage();
+  const { currencyCode, setCurrency, currencies } = useCurrency();
   const [langOpen, setLangOpen] = useState(false);
+  const [curOpen, setCurOpen] = useState(false);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [mobileSearchOpen, setMobileSearchOpen] = useState(false);
   const [mobileLangOpen, setMobileLangOpen] = useState(false);
+  const [mobileCurOpen, setMobileCurOpen] = useState(false);
+  // Currency onboarding hint: auto-shown once per browser session on site open.
+  const [curHintVisible, setCurHintVisible] = useState(false);
+  const [curHintCountdown, setCurHintCountdown] = useState(10);
+  const curHintTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const curHintIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const dismissCurHint = useCallback(() => {
+    if (curHintTimerRef.current) {
+      clearTimeout(curHintTimerRef.current);
+      curHintTimerRef.current = null;
+    }
+    if (curHintIntervalRef.current) {
+      clearInterval(curHintIntervalRef.current);
+      curHintIntervalRef.current = null;
+    }
+    setCurHintVisible(false);
+    try { sessionStorage.setItem('vp_cur_hint_shown', '1'); } catch {}
+  }, []);
   const [searchQuery, setSearchQuery] = useState('');
   const [searchResults, setSearchResults] = useState<SearchResult[]>([]);
   const [searchLoading, setSearchLoading] = useState(false);
@@ -51,6 +72,24 @@ export function SiteHeader({ activeTab = 'vape-deals' }: SiteHeaderProps) {
   const displayName = siteSettings?.site_name || '';
   const [mounted, setMounted] = useState(false);
   useEffect(() => { setMounted(true); }, []);
+  // Auto-show the currency hint once when the site is opened (per browser session)
+  useEffect(() => {
+    let shown = false;
+    try { shown = sessionStorage.getItem('vp_cur_hint_shown') === '1'; } catch {}
+    if (shown) return;
+    // Mark immediately so navigating within 10s does not re-trigger it.
+    try { sessionStorage.setItem('vp_cur_hint_shown', '1'); } catch {}
+    setCurHintCountdown(10);
+    setCurHintVisible(true);
+    curHintIntervalRef.current = setInterval(() => {
+      setCurHintCountdown((c) => (c > 0 ? c - 1 : 0));
+    }, 1000);
+    curHintTimerRef.current = setTimeout(() => setCurHintVisible(false), 10000);
+    return () => {
+      if (curHintTimerRef.current) clearTimeout(curHintTimerRef.current);
+      if (curHintIntervalRef.current) clearInterval(curHintIntervalRef.current);
+    };
+  }, []);
   // SSR and first client render must match; only use real logo after mount
   const displayLogo = mounted ? siteSettings?.logo_url : undefined;
   const handleLanguageChange = (lang: string) => {
@@ -58,6 +97,11 @@ export function SiteHeader({ activeTab = 'vape-deals' }: SiteHeaderProps) {
     setLangOpen(false);
     setMobileLangOpen(false);
     setMobileMenuOpen(false);
+  };
+  const handleCurrencyChange = (code: string) => {
+    setCurOpen(false);
+    setMobileCurOpen(false);
+    setCurrency(code); // persists + reloads so SSR blocks use the new currency
   };
   // Close mobile menu on route change
   useEffect(() => {
@@ -194,6 +238,15 @@ export function SiteHeader({ activeTab = 'vape-deals' }: SiteHeaderProps) {
     { href: '/best-vapes', label: 'Best Vapes', tab: 'best-vapes' },
     { href: '/news', label: 'News', tab: 'news' },
   ];
+  const aboutLinks = [
+    { href: '/about', en: 'About Us', zh: '关于我们' },
+    { href: '/contact', en: 'Contact Us', zh: '联系我们' },
+    { href: '/privacy', en: 'Privacy Policy', zh: '隐私政策' },
+    { href: '/disclaimer', en: 'Disclaimer', zh: '免责声明' },
+    { href: '/affiliate-disclosure', en: 'Affiliate Disclosure', zh: '联盟推广披露' },
+    { href: '/terms-of-service', en: 'Terms of Service', zh: '服务条款' },
+  ];
+  const isAboutActive = aboutLinks.some(l => pathname === l.href || pathname.startsWith(l.href + '/'));
   return (
     <header className="sticky top-0 z-50 bg-[#0a0a0e] border-b border-gray-800 relative">
       {/* Desktop Header */}
@@ -298,10 +351,69 @@ export function SiteHeader({ activeTab = 'vape-deals' }: SiteHeaderProps) {
                   </div>
                 )}
               </div>
+              {/* Currency Dropdown */}
+              <div className="relative">
+                <button
+                  onClick={() => { setCurOpen(!curOpen); setLangOpen(false); }}
+                  className="flex items-center gap-1.5 rounded-lg border border-gray-700 bg-[#1a1a24] px-3 py-2 text-sm font-medium text-gray-300 hover:bg-[#2a2a3a] transition-colors"
+                  aria-label="Currency"
+                >
+                  <img
+                    src={currencies.find(c => c.code === currencyCode)?.flag}
+                    alt={currencies.find(c => c.code === currencyCode)?.flagAlt}
+                    className="h-4 w-4 rounded-sm object-cover"
+                  />
+                  {currencyCode}
+                  <svg className="h-3 w-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+                  </svg>
+                </button>
+                {curOpen && (
+                  <>
+                    <div className="fixed inset-0 z-40" onClick={() => setCurOpen(false)} />
+                    <div className="absolute right-0 mt-2 z-50 w-44 rounded-lg border border-gray-700 bg-[#1a1a24] shadow-lg overflow-hidden max-h-80 overflow-y-auto">
+                      {currencies.map((cur) => (
+                        <button
+                          key={cur.code}
+                          onClick={() => handleCurrencyChange(cur.code)}
+                          className={`w-full px-4 py-2.5 text-sm text-left hover:bg-[#2a2a3a] transition-colors flex items-center gap-2 ${currencyCode === cur.code ? "text-purple-400 font-semibold" : "text-gray-300"}`}
+                        >
+                          <img src={cur.flag} alt={cur.flagAlt} className="h-4 w-4 rounded-sm object-cover" />
+                          <span>{cur.code}</span>
+                          <span className="text-gray-500">({cur.symbol})</span>
+                          {currencyCode === cur.code && (
+                            <svg className="h-4 w-4 ml-auto" fill="currentColor" viewBox="0 0 20 20">
+                              <path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd" />
+                            </svg>
+                          )}
+                        </button>
+                      ))}
+                    </div>
+                  </>
+                )}
+                {curHintVisible && (
+                  <div className="absolute right-0 top-full mt-3 z-50 w-64 rounded-lg border border-gray-200 bg-white px-3 py-2.5 shadow-lg hidden sm:block animate-fade-in-up">
+                    <div className="absolute -top-1.5 right-8 h-3 w-3 rotate-45 border-l border-t border-gray-200 bg-white" />
+                    <button
+                      onClick={dismissCurHint}
+                      aria-label="Dismiss"
+                      className="absolute right-1.5 top-1 flex h-5 w-5 items-center justify-center rounded text-gray-400 hover:text-gray-900 hover:bg-gray-100"
+                    >
+                      <svg className="h-3 w-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M6 18L18 6M6 6l12 12" /></svg>
+                    </button>
+                    <p className="pr-5 text-sm font-medium text-gray-900">
+                      {language === 'zh' ? '请选择您需要交易货币种类' : 'Please select your preferred currency'}
+                      <span className="ml-1 font-normal text-gray-400 tabular-nums">
+                        {language === 'zh' ? `（${curHintCountdown}秒）` : `(${curHintCountdown}s)`}
+                      </span>
+                    </p>
+                  </div>
+                )}
+              </div>
               {/* Language Dropdown */}
               <div className="relative">
                 <button
-                  onClick={() => setLangOpen(!langOpen)}
+                  onClick={() => { setLangOpen(!langOpen); setCurOpen(false); }}
                   className="flex items-center gap-1.5 rounded-lg border border-gray-700 bg-[#1a1a24] px-3 py-2 text-sm font-medium text-gray-300 hover:bg-[#2a2a3a] transition-colors"
                 >
                   <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -350,6 +462,31 @@ export function SiteHeader({ activeTab = 'vape-deals' }: SiteHeaderProps) {
                   {item.label}
                 </Link>
               ))}
+              {/* About Hover Dropdown */}
+              <div className="relative group h-12 flex items-center">
+                <button
+                  type="button"
+                  className={`flex items-center gap-1 text-sm font-semibold transition-colors ${isAboutActive ? 'text-white' : 'text-gray-400 group-hover:text-white'}`}
+                >
+                  About
+                  <svg className="h-3 w-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+                  </svg>
+                </button>
+                <div className="absolute left-1/2 top-full -translate-x-1/2 pt-1 invisible opacity-0 group-hover:visible group-hover:opacity-100 transition-all duration-150 z-50">
+                  <div className="w-52 rounded-xl border border-gray-700 bg-[#1a1a24] shadow-2xl py-2 overflow-hidden">
+                    {aboutLinks.map(l => (
+                      <Link
+                        key={l.href}
+                        href={l.href}
+                        className={`block px-4 py-2.5 text-sm transition-colors hover:bg-[#2a2a3a] hover:text-white ${(pathname === l.href || pathname.startsWith(l.href + '/')) ? 'text-purple-400' : 'text-gray-300'}`}
+                      >
+                        {language === 'zh' ? l.zh : l.en}
+                      </Link>
+                    ))}
+                  </div>
+                </div>
+              </div>
             </div>
           </div>
         </div>
@@ -386,8 +523,41 @@ export function SiteHeader({ activeTab = 'vape-deals' }: SiteHeaderProps) {
             )}
             <span className="text-lg font-bold tracking-tight text-white">{displayName || '\u00A0'}</span>
           </Link>
-          {/* Right: Language + Search */}
+          {/* Right: Currency + Language + Search */}
           <div className="flex items-center gap-1">
+            {/* Currency Toggle */}
+            <div className="relative">
+            <button
+              onClick={() => setMobileCurOpen(!mobileCurOpen)}
+              className="flex items-center gap-1 h-10 px-2 rounded-lg text-gray-300 hover:bg-[#1a1a24] transition-colors"
+              aria-label="Currency"
+            >
+              <img
+                src={currencies.find(c => c.code === currencyCode)?.flag}
+                alt={currencies.find(c => c.code === currencyCode)?.flagAlt}
+                className="h-4 w-4 rounded-sm object-cover"
+              />
+              <span className="text-sm font-medium">{currencyCode}</span>
+            </button>
+            {curHintVisible && (
+              <div className="absolute right-0 top-full mt-2 z-50 w-60 rounded-lg border border-gray-200 bg-white px-3 py-2.5 shadow-lg sm:hidden">
+                <div className="absolute -top-1.5 right-4 h-3 w-3 rotate-45 border-l border-t border-gray-200 bg-white" />
+                <button
+                  onClick={dismissCurHint}
+                  aria-label="Dismiss"
+                  className="absolute right-1.5 top-1 flex h-5 w-5 items-center justify-center rounded text-gray-400 hover:text-gray-900 hover:bg-gray-100"
+                >
+                  <svg className="h-3 w-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M6 18L18 6M6 6l12 12" /></svg>
+                </button>
+                <p className="pr-5 text-sm font-medium text-gray-900">
+                  {language === 'zh' ? '请选择您需要交易货币种类' : 'Please select your preferred currency'}
+                  <span className="ml-1 font-normal text-gray-400 tabular-nums">
+                    {language === 'zh' ? `（${curHintCountdown}秒）` : `(${curHintCountdown}s)`}
+                  </span>
+                </p>
+              </div>
+            )}
+            </div>
             {/* Language Toggle */}
             <button
               onClick={() => setMobileLangOpen(!mobileLangOpen)}
@@ -410,6 +580,30 @@ export function SiteHeader({ activeTab = 'vape-deals' }: SiteHeaderProps) {
             </button>
           </div>
         </div>
+        {/* Mobile Currency Dropdown */}
+        {mobileCurOpen && (
+          <>
+            <div className="fixed inset-0 z-40" onClick={() => setMobileCurOpen(false)} />
+            <div className="absolute right-4 top-14 z-50 w-44 rounded-lg border border-gray-700 bg-[#1a1a24] shadow-lg overflow-hidden max-h-80 overflow-y-auto">
+              {currencies.map((cur) => (
+                <button
+                  key={cur.code}
+                  onClick={() => handleCurrencyChange(cur.code)}
+                  className={`w-full px-4 py-2.5 text-sm text-left hover:bg-[#2a2a3a] transition-colors flex items-center gap-2 ${currencyCode === cur.code ? "text-purple-400 font-semibold" : "text-gray-300"}`}
+                >
+                  <img src={cur.flag} alt={cur.flagAlt} className="h-4 w-4 rounded-sm object-cover" />
+                  <span>{cur.code}</span>
+                  <span className="text-gray-500">({cur.symbol})</span>
+                  {currencyCode === cur.code && (
+                    <svg className="h-4 w-4 ml-auto" fill="currentColor" viewBox="0 0 20 20">
+                      <path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd" />
+                    </svg>
+                  )}
+                </button>
+              ))}
+            </div>
+          </>
+        )}
         {/* Mobile Language Dropdown */}
         {mobileLangOpen && (
           <>
@@ -584,27 +778,16 @@ export function SiteHeader({ activeTab = 'vape-deals' }: SiteHeaderProps) {
                 </Link>
               ))}
               <div className="my-2 mx-5 border-t border-gray-800" />
-              <Link
-                href="/about"
-                onClick={() => setMobileMenuOpen(false)}
-                className="flex items-center gap-3 px-5 py-3.5 text-base font-medium text-gray-400 hover:text-white hover:bg-[#1a1a24] transition-colors"
-              >
-                {language === "zh" ? "关于我们" : "About Us"}
-              </Link>
-              <Link
-                href="/contact"
-                onClick={() => setMobileMenuOpen(false)}
-                className="flex items-center gap-3 px-5 py-3.5 text-base font-medium text-gray-400 hover:text-white hover:bg-[#1a1a24] transition-colors"
-              >
-                {language === "zh" ? "联系我们" : "Contact Us"}
-              </Link>
-              <Link
-                href="/privacy"
-                onClick={() => setMobileMenuOpen(false)}
-                className="flex items-center gap-3 px-5 py-3.5 text-base font-medium text-gray-400 hover:text-white hover:bg-[#1a1a24] transition-colors"
-              >
-                {language === "zh" ? "隐私政策" : "Privacy Policy"}
-              </Link>
+              {aboutLinks.map(l => (
+                <Link
+                  key={l.href}
+                  href={l.href}
+                  onClick={() => setMobileMenuOpen(false)}
+                  className="flex items-center gap-3 px-5 py-3.5 text-base font-medium text-gray-400 hover:text-white hover:bg-[#1a1a24] transition-colors"
+                >
+                  {language === 'zh' ? l.zh : l.en}
+                </Link>
+              ))}
             </nav>
           </div>
         </>

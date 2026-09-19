@@ -2,7 +2,20 @@
 
 import { useState, useEffect } from 'react';
 
+const REGION_AGE_LIMITS: { code: string; label: string; minAge: number }[] = [
+  { code: 'US', label: 'United States (21+)', minAge: 21 },
+  { code: 'JP', label: 'Japan (20+)', minAge: 20 },
+  { code: 'KR', label: 'South Korea (19+)', minAge: 19 },
+  { code: 'CA', label: 'Canada (19+)', minAge: 19 },
+  { code: 'UK', label: 'United Kingdom (18+)', minAge: 18 },
+  { code: 'EU', label: 'European Union (18+)', minAge: 18 },
+  { code: 'AU', label: 'Australia (18+)', minAge: 18 },
+  { code: 'RU', label: 'Russia (18+)', minAge: 18 },
+  { code: 'OTHER', label: 'Other (18+)', minAge: 18 },
+];
+
 export default function AgeVerification() {
+  const [region, setRegion] = useState('');
   const [month, setMonth] = useState('');
   const [day, setDay] = useState('');
   const [year, setYear] = useState('');
@@ -19,7 +32,14 @@ export default function AgeVerification() {
     setMounted(true);
   }, []);
 
+  const selectedRegion = REGION_AGE_LIMITS.find(r => r.code === region);
+  const minAge = selectedRegion?.minAge ?? 18;
+
   const handleVerify = () => {
+    if (!region) {
+      setError('Please select your region.');
+      return;
+    }
     if (!month || !day || !year) {
       setError('Please enter your full date of birth.');
       return;
@@ -42,12 +62,12 @@ export default function AgeVerification() {
       age--;
     }
 
-    if (age >= 21) {
+    if (age >= minAge) {
       localStorage.setItem('age_verified', 'true');
       setIsVerified(true);
       window.dispatchEvent(new Event('ageVerified'));
     } else {
-      setError('Sorry, you must be at least 21 years old to enter this site.');
+      setError(`Sorry, you must be at least ${minAge} years old to enter this site in ${selectedRegion?.label?.replace(/\s*\(\d+\+\)$/, '') || 'your region'}.`);
     }
   };
 
@@ -71,7 +91,7 @@ export default function AgeVerification() {
   ];
 
   return (
-    <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/90 backdrop-blur-sm">
+    <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/50 backdrop-blur-[2px]">
       <div className="mx-4 w-full max-w-md max-h-[90vh] overflow-y-auto rounded-2xl border border-gray-700 bg-[#1a1a24] p-8">
         <div className="mb-6 text-center">
           <div className="mx-auto mb-4 flex h-16 w-16 items-center justify-center rounded-full bg-purple-500/20">
@@ -81,8 +101,24 @@ export default function AgeVerification() {
           </div>
           <h2 className="text-2xl font-bold text-white">Age Verification</h2>
           <p className="mt-2 text-sm leading-relaxed text-gray-400">
-            This website contains information about vaping products intended for adults aged 21 and older. By entering this site, you confirm that you are at least 21 years of age and that you understand the health risks associated with nicotine and vaping products.
+            {region
+              ? `This website contains information about vaping products intended for adults aged ${minAge} and older. By entering this site, you confirm that you are at least ${minAge} years of age and understand the health risks associated with nicotine and vaping products.`
+              : 'This website contains information about vaping products intended for adults of legal smoking age in their jurisdiction. By entering this site, you confirm that you meet the legal age requirement in your region and understand the health risks associated with nicotine and vaping products.'}
           </p>
+        </div>
+
+        <div className="mb-4">
+          <label className="mb-2 block text-sm font-medium text-gray-300">Region</label>
+          <select
+            value={region}
+            onChange={(e) => { setRegion(e.target.value); setError(''); }}
+            className="w-full rounded-lg border border-gray-600 bg-[#0f0f13] px-3 py-2.5 text-white focus:border-purple-500 focus:outline-none focus:ring-1 focus:ring-purple-500"
+          >
+            <option value="">Select your region</option>
+            {REGION_AGE_LIMITS.map((r) => (
+              <option key={r.code} value={r.code}>{r.label}</option>
+            ))}
+          </select>
         </div>
 
         <div className="mb-4">
@@ -145,7 +181,9 @@ export default function AgeVerification() {
             Warning
           </p>
           <p className="mt-1 text-xs leading-relaxed text-amber-300/80">
-            Vaping products contain nicotine, a highly addictive substance. Not intended for use by persons under the age of 21, pregnant or nursing women, or persons with heart disease or high blood pressure. If you are a smoker, quitting smoking is the best thing you can do to improve your health.
+            Vaping products contain nicotine, a highly addictive substance. {region
+                ? `Not intended for use by persons under the age of ${minAge}, pregnant or nursing women, or persons with heart disease or high blood pressure.`
+                : 'Not intended for use by persons under the legal smoking age in their jurisdiction, pregnant or nursing women, or persons with heart disease or high blood pressure.'} If you are a smoker, quitting smoking is the best thing you can do to improve your health.
           </p>
         </div>
       </div>

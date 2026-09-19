@@ -1,52 +1,35 @@
-'use client';
-
-import { useState, useEffect } from 'react';
-import { SiteHeader } from '@/components/site-header';
-import { useLanguage } from '@/hooks/use-language';
+import type { Metadata } from 'next';
+import { getSupabaseClient } from '@/storage/database/supabase-client';
 import { cleanRichText } from '@/lib/utils';
+import { StaticPageView } from '@/components/static-page-view';
 
-export default function DisclaimerPage() {
-  const { language } = useLanguage();
-  const [content, setContent] = useState('');
-  const [loading, setLoading] = useState(true);
+export const revalidate = 3600;
 
-  useEffect(() => {
-    setLoading(true);
-    fetch(`/api/static-pages?slug=disclaimer&language=${language}`)
-      .then(r => r.json())
-      .then(d => {
-        if (d.success && d.data) {
-          setContent(cleanRichText(d.data.content || ''));
-        }
-      })
-      .catch(() => {})
-      .finally(() => setLoading(false));
-  }, [language]);
+export const metadata: Metadata = {
+  title: 'Disclaimer',
+  description:
+    'VapeDeals360 provides product and price information for general informational purposes only. We are an independent comparison site, not a retailer; read the full disclaimer.',
+  alternates: { canonical: 'https://www.vapedeals360.com/disclaimer' },
+};
 
-  return (
-    <div className="min-h-screen flex flex-col">
-      <SiteHeader activeTab="" />
+export default async function DisclaimerPage() {
+  let content = '';
+  try {
+    const client = getSupabaseClient();
+    if (client) {
+      const { data: rows } = await client
+        .from('static_pages')
+        .select('*, static_page_translations(*)')
+        .eq('slug', 'disclaimer');
+      const page = rows?.[0];
+      const translation = (page?.static_page_translations || []).find(
+        (tr: { language: string }) => tr.language === 'en'
+      );
+      if (translation?.content) content = cleanRichText(translation.content);
+    }
+  } catch {
+    // Render shell; client layer keeps language switching available
+  }
 
-      <main className="flex-1 bg-white">
-      <div className="max-w-[1440px] mx-auto px-4 sm:px-6 lg:px-8 py-8">
-        <h1 className="text-3xl font-bold mb-6">Disclaimer</h1>
-        {loading ? (
-          <div className="text-center py-20">
-            <div className="animate-spin w-8 h-8 border-2 border-purple-700 border-t-transparent rounded-full mx-auto mb-4" />
-          </div>
-        ) : content ? (
-          <div
-            className="rich-text-content"
-            dangerouslySetInnerHTML={{ __html: content }}
-          />
-        ) : (
-          <div className="text-gray-500">
-            <p>Disclaimer content will be available soon.</p>
-          </div>
-        )}
-      </div>
-      </main>
-
-    </div>
-  );
+  return <StaticPageView slug="disclaimer" title="Disclaimer" initialContent={content} />;
 }

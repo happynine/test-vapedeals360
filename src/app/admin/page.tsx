@@ -46,7 +46,13 @@ async function adminFetch(url: string, options: RequestInit = {}): Promise<Respo
   if (adminToken) {
     headers['x-session'] = adminToken;
   }
-  return fetch(url, { ...options, headers });
+  const res = await fetch(url, { ...options, headers });
+  // Auto-logout on 401: token expired or invalid
+  if (res.status === 401 && typeof window !== 'undefined') {
+    localStorage.removeItem('admin_token');
+    window.location.reload();
+  }
+  return res;
 }
 
 let mammothInstance: typeof import('mammoth') | null = null;
@@ -154,11 +160,20 @@ import('quill').then((mod) => {
       static create(value: any) {
         const node = (BlockEmbed as any).create.call(this) as HTMLDivElement;
         node.classList.add('table-wrapper');
+        // CRITICAL: wrapper must be contenteditable=false so the browser treats
+        // the table as an atomic non-editable block. Cells inside are set to
+        // contenteditable=true to form editable islands. Without this, the
+        // browser treats the whole table as part of the editable document and
+        // Backspace causes it to merge/move across paragraph boundaries.
+        node.setAttribute('contenteditable', 'false');
         if (typeof value === 'string') {
           node.innerHTML = value;
         } else if (typeof value === 'object' && value !== null && value.html) {
           node.innerHTML = value.html;
         }
+        node.querySelectorAll('td, th').forEach((cell: Element) => {
+          cell.setAttribute('contenteditable', 'true');
+        });
         return node;
       }
 
@@ -266,7 +281,7 @@ interface PromotionProductTranslation { language: string; name: string; descript
 interface PromotionProductStorePrice { store_id?: number | null; region?: string; current_price?: string; original_price?: string; discount_percent?: number; currency?: string; product_url?: string; no_quote?: boolean; time_type?: 'permanent' | 'time_range' | 'countdown'; start_time?: string | null; end_time?: string | null; countdown_action?: 'close' | 'original_price' | null; store?: { id: number; slug: string; store_translations?: Array<{ language: string; name: string }> } | null; }
 interface PromotionProduct { id: number; promotion_id: number; product_id?: number | null; slug?: string; category_id?: number | null; image_key?: string; image_url?: string; image_url_small?: string; home_image_key?: string; home_image_url?: string; store_id?: number | null; special_price?: number | null; currency?: string | null; time_type?: 'permanent' | 'time_range' | 'countdown'; start_time?: string | null; end_time?: string | null; countdown_action?: 'close' | 'original_price' | null; is_active?: boolean; is_featured?: boolean; notes?: string; updated_at?: string; promotion_product_translations?: PromotionProductTranslation[]; promotion_product_prices?: PromotionProductStorePrice[]; stores?: PromotionProductStorePrice[]; promotions?: { id: number; slug: string; promotion_translations?: Array<{ language: string; name: string }> } | null; }
 interface Promotion { id: number; title?: string; slug: string; special_price: number | null; currency: string | null; sort_order: number; is_active: boolean; product_count?: number; promotion_translations: PromotionTranslation[]; promotion_products?: PromotionProduct[]; }
-interface Product { id: number; slug: string; category_id: number | null; image_url: string | null; image_url_small: string | null; image_key: string | null; home_image_key: string | null; home_image_url: string | null; images: string | null; sales_region: string | null; is_active: boolean; is_featured: boolean; notes: string; updated_at?: string; has_promotion?: boolean; active_promotion_count?: number; promotion_prices?: Array<Record<string, unknown>>; product_translations: ProductTranslation[]; product_prices: ProductPrice[]; categories?: { id: number; slug: string; category_translations: CategoryTranslation[] } | null; }
+interface Product { id: number; slug: string; category_id: number | null; image_url: string | null; image_url_small: string | null; image_key: string | null; home_image_key: string | null; home_image_url: string | null; images: string | null; sales_region: string | null; is_active: boolean; is_featured: boolean; notes: string; updated_at?: string; has_promotion?: boolean; active_promotion_count?: number; has_ended_promotion?: boolean; ended_promotion_count?: number; promotion_prices?: Array<Record<string, unknown>>; product_translations: ProductTranslation[]; product_prices: ProductPrice[]; categories?: { id: number; slug: string; category_translations: CategoryTranslation[] } | null; }
 
 type Tab = 'site_settings' | 'products' | 'promotions' | 'categories' | 'stores' | 'banners' | 'analytics' | 'best_vapes' | 'news' | 'database_backup';
 type StaticPageSlug = 'privacy-policy' | 'about-us' | 'disclaimer' | 'affiliate-disclosure' | 'terms-of-service';
@@ -425,6 +440,7 @@ export default function AdminPage() {
   const [loginError, setLoginError] = useState('');
   const [loginLoading, setLoginLoading] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
+  const [loginLogo, setLoginLogo] = useState<string | null>(null);
 
 
   const [activeTab, setActiveTab] = useState<Tab>('site_settings');
@@ -449,6 +465,7 @@ export default function AdminPage() {
   // Image crop modal state
   const [cropModalVisible, setCropModalVisible] = useState(false);
   const [cropImageSrc, setCropImageSrc] = useState('');
+  const [cropOriginalSrc, setCropOriginalSrc] = useState('');
   const [cropTargetImg, setCropTargetImg] = useState<HTMLImageElement | null>(null);
   const [cropMinWidth, setCropMinWidth] = useState<number | undefined>(undefined);
   const [cropMinHeight, setCropMinHeight] = useState<number | undefined>(undefined);
@@ -467,7 +484,11 @@ export default function AdminPage() {
   // Listen for image crop requests from RichTextEditor
   useEffect(() => {
     const handleCropRequest = (e: CustomEvent<{ imageSrc: string; imageElement: HTMLImageElement; minWidth?: number; minHeight?: number }>) => {
-      setCropImageSrc(e.detail.imageSrc || '');
+      const src = e.detail.imageSrc || '';
+      // Remember the original (non-proxy) src so we can overwrite the same R2 key on confirm
+      setCropOriginalSrc(src.split('?')[0]);
+      // Proxy external URLs through /api/image to avoid CORS taint on canvas
+      setCropImageSrc(src.startsWith('http') ? `/api/image?key=${encodeURIComponent(src.split('?')[0])}` : src);
       setCropTargetImg(e.detail.imageElement);
       setCropMinWidth(e.detail.minWidth);
       setCropMinHeight(e.detail.minHeight);
@@ -481,6 +502,10 @@ export default function AdminPage() {
   useEffect(() => {
     const token = localStorage.getItem('admin_token');
     if (token) setIsLoggedIn(true);
+    // Fetch site logo for login page (public API, no auth needed)
+    fetch('/api/site-settings').then(r => r.json()).then(d => {
+      if (d.success && d.data?.logo_url) setLoginLogo(d.data.logo_url);
+    }).catch(() => {});
   }, []);
 
   const handleLogin = async (e: React.FormEvent) => {
@@ -539,13 +564,39 @@ export default function AdminPage() {
   const [productSearch, setProductSearch] = useState('');
   const [productSearchInput, setProductSearchInput] = useState('');
   const [productPage, setProductPage] = useState(1);
+  const [productCurrencyFilter, setProductCurrencyFilter] = useState<string>('');
+  const [productCurrencyDropdownOpen, setProductCurrencyDropdownOpen] = useState(false);
+  const [productTypeFilter, setProductTypeFilter] = useState<string>('');
   const PRODUCTS_PER_PAGE = 20;
   const sortedProducts = useMemo(() => {
     return [...products].sort((a, b) => productSortOrder === 'asc' ? a.id - b.id : b.id - a.id);
   }, [products, productSortOrder]);
   const filteredProducts = useMemo(() => {
-    return sortedProducts.filter(p => !productSearch || (p.product_translations?.find((tr: any) => tr.language === 'en')?.name || '').toLowerCase().includes(productSearch.toLowerCase()));
-  }, [sortedProducts, productSearch]);
+    return sortedProducts.filter(p => {
+      if (productSearch && !((p.product_translations?.find((tr: any) => tr.language === 'en')?.name || '').toLowerCase().includes(productSearch.toLowerCase()))) return false;
+      if (productCurrencyFilter) {
+        const productCurrencySymbols = new Set<string>();
+        p.product_prices?.forEach((price: any) => {
+          if (price.currency && !price.no_quote) productCurrencySymbols.add(price.currency);
+        });
+        (p.promotion_prices as Array<Record<string, unknown>> | undefined)?.forEach((price) => {
+          const cur = price.currency as string;
+          const noQuote = price.no_quote as boolean;
+          if (cur && !noQuote) productCurrencySymbols.add(cur);
+        });
+        const targetSymbol = CURRENCY_OPTIONS.find((o) => o.code === productCurrencyFilter)?.symbol;
+        if (!targetSymbol || !productCurrencySymbols.has(targetSymbol)) return false;
+      }
+      if (productTypeFilter === 'promotion') {
+        if (!p.has_promotion) return false;
+      } else if (productTypeFilter === 'standard') {
+        if (p.has_promotion) return false;
+      } else if (productTypeFilter === 'featured') {
+        if (!p.is_featured) return false;
+      }
+      return true;
+    });
+  }, [sortedProducts, productSearch, productCurrencyFilter, productTypeFilter, stores]);
   const productTotalPages = Math.ceil(filteredProducts.length / PRODUCTS_PER_PAGE);
   const paginatedProducts = useMemo(() => {
     const start = (productPage - 1) * PRODUCTS_PER_PAGE;
@@ -587,20 +638,21 @@ export default function AdminPage() {
   const fetchAllData = useCallback(async () => {
     setLoading(true);
     try {
-      const [catRes, storeRes, prodRes, bannerRes] = await Promise.all([
-        adminFetch('/api/admin/categories'),
-        adminFetch('/api/admin/stores'),
-        adminFetch('/api/admin/products?limit=500'),
-        adminFetch('/api/admin/banners'),
+      const results = await Promise.allSettled([
+        adminFetch('/api/admin/categories').then(r => r.json()),
+        adminFetch('/api/admin/stores').then(r => r.json()),
+        adminFetch('/api/admin/products?limit=500').then(r => r.json()),
+        adminFetch('/api/admin/banners').then(r => r.json()),
       ]);
-      const catJson = await catRes.json();
-      const storeJson = await storeRes.json();
-      const prodJson = await prodRes.json();
-      const bannerJson = await bannerRes.json();
-      if (catJson.success) setCategories(catJson.data || []);
-      if (storeJson.success) setStores(storeJson.data || []);
-      if (prodJson.success) setProducts(prodJson.data?.products || []);
-      if (bannerJson.success) setBanners(bannerJson.data || []);
+      const [catResult, storeResult, prodResult, bannerResult] = results;
+      if (catResult.status === 'fulfilled' && catResult.value.success) setCategories(catResult.value.data || []);
+      if (storeResult.status === 'fulfilled' && storeResult.value.success) setStores(storeResult.value.data || []);
+      if (prodResult.status === 'fulfilled' && prodResult.value.success) setProducts(prodResult.value.data?.products || []);
+      if (bannerResult.status === 'fulfilled' && bannerResult.value.success) setBanners(bannerResult.value.data || []);
+      // Log any failures without blocking other data
+      results.forEach((r, i) => {
+        if (r.status === 'rejected') console.error(`fetchAllData[${i}] failed:`, r.reason);
+      });
     } catch (err) {
       console.error('Failed to fetch data:', err);
     } finally {
@@ -671,7 +723,7 @@ export default function AdminPage() {
     }
   }, [adminLang]);
 
-  useEffect(() => { fetchAllData(); }, [fetchAllData]);
+  useEffect(() => { if (isLoggedIn) fetchAllData(); }, [isLoggedIn, fetchAllData]);
   useEffect(() => { if (isLoggedIn && activeTab === 'promotions') { fetchPromotions(); fetchPromotionToggle(); } }, [isLoggedIn, activeTab, fetchPromotions, fetchPromotionToggle]);
   useEffect(() => { if (isLoggedIn && activeTab === 'products') { fetchPromotionProducts(); fetchPromotions(); } }, [isLoggedIn, activeTab, fetchPromotionProducts, fetchPromotions]);
 
@@ -732,6 +784,20 @@ export default function AdminPage() {
     } catch { alert(t('Failed to delete banner', '删除 Banner 失败', adminLang)); }
   };
 
+  const handleReorderBanner = async (bannerId: number, newSortOrder: number) => {
+    try {
+      const res = await adminFetch('/api/admin/banners', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ id: bannerId, sort_order: newSortOrder }),
+      });
+      const json = await res.json();
+      if (json.success) fetchAllData();
+    } catch (err) {
+      console.error('Banner reorder error:', err);
+    }
+  };
+
   const handleDeletePromotion = async (id: number) => {
     if (!confirm(t('Are you sure you want to delete this promotion?', '确定要删除该活动吗？', adminLang))) return;
     try {
@@ -772,11 +838,17 @@ export default function AdminPage() {
         <div className="w-full max-w-sm">
           <div className="bg-card rounded-2xl border border-border p-8 shadow-xl">
             <div className="flex flex-col items-center mb-8">
-              <img
-                src="https://coze-coding-project.tos.coze.site/gen_project_icon/2026-05-22/7642619146919952424_1779436857.png?sign=490260516-fdfb97f369-0-ab44db23aa14bde024c0964b882eb270c4c5ef8fcc30760f2ab0cf3ece075cfe"
-                alt="VapeDeal"
-                className="h-14 w-14 rounded-2xl object-cover mb-4"
-              />
+              {loginLogo ? (
+                <img
+                  src={loginLogo}
+                  alt="VapeDeals360"
+                  className="h-14 w-14 rounded-2xl object-contain mb-4"
+                />
+              ) : (
+                <div className="h-14 w-14 rounded-2xl bg-primary/10 flex items-center justify-center mb-4">
+                  <span className="text-2xl font-bold text-primary">V</span>
+                </div>
+              )}
               <h1 className="text-2xl font-bold">{t('Admin Login', '后台登录', adminLang)}</h1>
               <p className="text-sm text-muted-foreground mt-1">{t('Enter credentials to continue', '请输入登录凭据', adminLang)}</p>
             </div>
@@ -1572,6 +1644,57 @@ export default function AdminPage() {
                     >
                       {t('Confirm', '确认', adminLang)}
                     </button>
+                    <div className="relative">
+                      <button
+                        type="button"
+                        onClick={() => setProductCurrencyDropdownOpen(!productCurrencyDropdownOpen)}
+                        onBlur={() => setTimeout(() => setProductCurrencyDropdownOpen(false), 150)}
+                        className="px-3 py-1.5 rounded-md border border-border bg-secondary text-sm text-foreground focus:outline-none focus:ring-1 focus:ring-purple-500 flex items-center gap-1.5 min-w-[140px] justify-between"
+                      >
+                        {productCurrencyFilter ? (() => {
+                          const curr = CURRENCY_OPTIONS.find(c => c.code === productCurrencyFilter);
+                          return curr ? (
+                            <span className="flex items-center gap-1.5">
+                              <img src={curr.flag} alt={curr.flagAlt} className="w-4 h-4 rounded-sm object-cover" />
+                              <span>{curr.code} ({curr.symbol})</span>
+                            </span>
+                          ) : productCurrencyFilter;
+                        })() : t('All Currencies', '全部货币', adminLang)}
+                        <svg className="w-3.5 h-3.5 text-muted-foreground ml-1" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" /></svg>
+                      </button>
+                      {productCurrencyDropdownOpen && (
+                        <div className="absolute z-50 mt-1 w-full min-w-[180px] rounded-lg border border-border bg-card shadow-lg">
+                          <button
+                            type="button"
+                            onMouseDown={(e) => { e.preventDefault(); setProductCurrencyFilter(''); setProductPage(1); setProductCurrencyDropdownOpen(false); }}
+                            className={`w-full px-3 py-2 text-sm text-left hover:bg-secondary ${!productCurrencyFilter ? 'bg-secondary' : ''}`}
+                          >
+                            {t('All Currencies', '全部货币', adminLang)}
+                          </button>
+                          {CURRENCY_OPTIONS.map((opt) => (
+                            <button
+                              key={opt.code}
+                              type="button"
+                              onMouseDown={(e) => { e.preventDefault(); setProductCurrencyFilter(opt.code); setProductPage(1); setProductCurrencyDropdownOpen(false); }}
+                              className={`w-full px-3 py-2 text-sm text-left flex items-center gap-2 hover:bg-secondary ${productCurrencyFilter === opt.code ? 'bg-secondary' : ''}`}
+                            >
+                              <img src={opt.flag} alt={opt.flagAlt} className="w-4 h-4 rounded-sm object-cover" />
+                              <span>{opt.code} ({opt.symbol})</span>
+                            </button>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                    <select
+                      value={productTypeFilter}
+                      onChange={(e) => { setProductTypeFilter(e.target.value); setProductPage(1); }}
+                      className="px-3 py-1.5 rounded-md border border-border bg-secondary text-sm text-foreground focus:outline-none focus:ring-1 focus:ring-purple-500"
+                    >
+                      <option value="">{t('All Products', '全部', adminLang)}</option>
+                      <option value="standard">{t('Standard Products', '标准产品', adminLang)}</option>
+                      <option value="promotion">{t('Promotion Products', '活动产品', adminLang)}</option>
+                      <option value="featured">{t('Featured Products', '推荐产品', adminLang)}</option>
+                    </select>
                   </div>
                 </div>
                 <div className="flex items-center gap-2">
@@ -1606,7 +1729,7 @@ export default function AdminPage() {
                           <th className="px-4 py-3 text-left text-xs font-semibold text-muted-foreground uppercase">{t('Product', '产品', adminLang)}</th>
                           <th className="px-4 py-3 text-left text-xs font-semibold text-muted-foreground uppercase">{t('Category', '分类', adminLang)}</th>
                           <th className="px-4 py-3 text-left text-xs font-semibold text-muted-foreground uppercase">{t('Prices', '价格数', adminLang)}</th>
-                          <th className="px-4 py-3 text-left text-xs font-semibold text-muted-foreground uppercase">{t('Status', '状态', adminLang)}</th>
+                          <th className="px-4 py-3 text-left text-xs font-semibold text-muted-foreground uppercase">{t('Currencies', '货币', adminLang)}</th>
                           <th className="px-4 py-3 text-left text-xs font-semibold text-muted-foreground uppercase">{t('Notes', '备注', adminLang)}</th>
                           <th className="px-4 py-3 text-right text-xs font-semibold text-muted-foreground uppercase">{t('Actions', '操作', adminLang)}</th>
                         </tr>
@@ -1618,17 +1741,11 @@ export default function AdminPage() {
                           const catName = product.categories?.category_translations?.find((tr) => tr.language === adminLang)?.name || '—';
                           const rowIndex = (productPage - 1) * PRODUCTS_PER_PAGE + pIndex + 1;
                           const thumbnailUrl = product.home_image_url || product.home_image_key || product.image_url || product.image_key || null;
-                          const thumbnailDisplayUrl = thumbnailUrl ? getImageUrl(thumbnailUrl) : null;
-                          const productRegions = new Set<string>();
-                          product.product_prices?.forEach((price: ProductPrice) => {
-                            const store = stores.find((s) => s.id === price.store_id);
-                            store?.regions?.forEach((r) => {
-                              if (r.region) productRegions.add(r.region);
-                            });
-                          });
-                          const regionList = Array.from(productRegions);
+                          const rawThumbUrl = thumbnailUrl ? getImageUrl(thumbnailUrl) : null;
+                          const thumbCacheKey = product.updated_at ? product.updated_at.replace(/[^0-9]/g, '') : '';
+                          const thumbnailDisplayUrl = rawThumbUrl && thumbCacheKey ? `${rawThumbUrl}${rawThumbUrl.includes('?') ? '&' : '?'}v=${thumbCacheKey}` : rawThumbUrl;
                           return (
-                            <tr key={product.id} className="border-b border-border hover:bg-secondary/20 transition-colors">
+                            <tr key={product.id} className={`border-b border-border hover:bg-secondary/20 transition-colors ${!product.is_active ? "opacity-50" : ""}`}>
                               <td className="px-4 py-3 text-sm text-muted-foreground">{rowIndex}</td>
                               <td className="px-4 py-3 text-sm text-muted-foreground">{product.id}</td>
                               <td className="px-4 py-3">
@@ -1645,21 +1762,92 @@ export default function AdminPage() {
                               <td className="px-4 py-3">
                                 <div className="flex items-center gap-2">
                                   <div>
-                                    <div className="text-sm font-medium">{enName}</div>
+                                    <div className="text-sm font-medium flex items-center gap-1.5">
+                                      {enName}
+                                      {product.is_featured && (
+                                        <span className="inline-flex items-center rounded bg-amber-500/15 px-1.5 py-0.5 text-[10px] font-bold text-amber-500" title={adminLang === 'zh' ? '推荐产品' : 'Featured product'}>
+                                          <svg className="w-2.5 h-2.5" fill="currentColor" viewBox="0 0 20 20"><path d="M9.049 2.927c.3-.921 1.603-.921 1.902 0l1.07 3.292a1 1 0 00.95.69h3.462c.969 0 1.371 1.24.588 1.81l-2.8 2.034a1 1 0 00-.364 1.118l1.07 3.292c.3.921-.755 1.688-1.54 1.118l-2.8-2.034a1 1 0 00-1.175 0l-2.8 2.034c-.784.57-1.838-.197-1.539-1.118l1.07-3.292a1 1 0 00-.364-1.118L2.98 8.72c-.783-.57-.38-1.81.588-1.81h3.461a1 1 0 00.951-.69l1.07-3.292z" /></svg>
+                                          {adminLang === 'zh' ? '推荐' : 'FEATURED'}
+                                        </span>
+                                      )}
+                                      {product.has_promotion && (
+                                        <span className="inline-flex items-center rounded bg-purple-500/15 px-1.5 py-0.5 text-[10px] font-bold text-purple-400" title={
+                                          (() => {
+                                            const promoIds = new Set<number>();
+                                            (product.promotion_prices as Array<Record<string, unknown>> | undefined)?.forEach(p => {
+                                              const pid = p.promotion_id as number;
+                                              if (pid) promoIds.add(pid);
+                                            });
+                                            return Array.from(promoIds).map(id => {
+                                              const p = promotions.find(pr => pr.id === id);
+                                              return p?.promotion_translations?.find(t => t.language === adminLang)?.name || p?.slug || '';
+                                            }).filter(Boolean).join(', ');
+                                          })()
+                                        }>
+                                          <svg className="w-2.5 h-2.5" fill="currentColor" viewBox="0 0 20 20"><path fillRule="evenodd" d="M5 2a2 2 0 00-2 2v14l3.5-2 3.5 2 3.5-2 3.5 2V4a2 2 0 00-2-2H5zm2.5 3a1.5 1.5 0 100 3 1.5 1.5 0 000-3zm6.207.293a1 1 0 00-1.414 0l-6 6a1 1 0 101.414 1.414l6-6a1 1 0 000-1.414zM12.5 10a1.5 1.5 0 100 3 1.5 1.5 0 000-3z" clipRule="evenodd" /></svg>
+                                          {adminLang === 'zh' ? '活动中' : 'PROMO'}
+                                        </span>
+                                      )}
+                                      {!product.has_promotion && product.has_ended_promotion && (
+                                        <span className="inline-flex items-center rounded bg-red-500/15 px-1.5 py-0.5 text-[10px] font-bold text-red-400" title={
+                                          (() => {
+                                            const promoIds = new Set<number>();
+                                            (product.promotion_prices as Array<Record<string, unknown> | undefined>)?.forEach(p => {
+                                              const pid = p.promotion_id as number;
+                                              if (pid) promoIds.add(pid);
+                                            });
+                                            return Array.from(promoIds).map(id => {
+                                              const p = promotions.find(pr => pr.id === id);
+                                              return p?.promotion_translations?.find(t => t.language === adminLang)?.name || p?.slug || '';
+                                            }).filter(Boolean).join(', ');
+                                          })()
+                                        }>
+                                          <svg className="w-2.5 h-2.5" fill="currentColor" viewBox="0 0 20 20"><path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM8.707 7.293a1 1 0 00-1.414 1.414L8.586 10l-1.293 1.293a1 1 0 101.414 1.414L10 11.414l1.293 1.293a1 1 0 001.414-1.414L11.414 10l1.293-1.293a1 1 0 00-1.414-1.414L10 8.586 8.707 7.293z" clipRule="evenodd" /></svg>
+                                          {adminLang === 'zh' ? '已下架' : 'PROMO ENDED'}
+                                        </span>
+                                      )}
+                                    </div>
                                     <div className="text-xs text-muted-foreground">{zhName}</div>
                                   </div>
                                 </div>
                               </td>
                               <td className="px-4 py-3 text-sm text-muted-foreground">{catName}</td>
-                              <td className="px-4 py-3 text-sm text-muted-foreground">{product.product_prices?.length || 0} {t('stores', '家商城', adminLang)}</td>
+                              <td className="px-4 py-3 text-sm text-muted-foreground">
+                                {(() => {
+                                  const storeIds = new Set<number>();
+                                  product.product_prices?.forEach((p: ProductPrice) => { if (p.store_id) storeIds.add(p.store_id); });
+                                  (product.promotion_prices as Array<Record<string, unknown>> | undefined)?.forEach((p) => {
+                                    const sid = p.store_id as number;
+                                    if (sid) storeIds.add(sid);
+                                  });
+                                  return `${storeIds.size} ${t('stores', '家商城', adminLang)}`;
+                                })()}
+                              </td>
                               <td className="px-4 py-3">
                                 <div className="flex gap-1 flex-wrap">
-                                  {product.is_active && <span className="rounded bg-green-400/10 px-1.5 py-0.5 text-[10px] font-semibold text-green-400">{t('Active', '启用', adminLang)}</span>}
-                                  {product.is_featured && <span className="rounded bg-primary/10 px-1.5 py-0.5 text-[10px] font-semibold text-primary">{t('Featured', '推荐', adminLang)}</span>}
-                                  {product.has_promotion && <span className="rounded bg-purple-500/15 px-1.5 py-0.5 text-[10px] font-bold text-purple-400">PROMO</span>}
-                                  {regionList.map((region) => (
-                                    <span key={region} className="rounded bg-cyan-400/10 px-1.5 py-0.5 text-[10px] font-semibold text-cyan-400">{region}</span>
-                                  ))}
+                                  {(() => {
+                                    const productCurrencySymbols = new Set<string>();
+                                    product.product_prices?.forEach((price: ProductPrice) => {
+                                      if (price.currency && !price.no_quote) productCurrencySymbols.add(price.currency);
+                                    });
+                                    (product.promotion_prices as Array<Record<string, unknown>> | undefined)?.forEach((price) => {
+                                      const cur = price.currency as string;
+                                      const noQuote = price.no_quote as boolean;
+                                      if (cur && !noQuote) productCurrencySymbols.add(cur);
+                                    });
+                                    const symbolList = Array.from(productCurrencySymbols);
+                                    if (symbolList.length === 0) return <span className="text-[10px] text-muted-foreground">—</span>;
+                                    return symbolList.map((sym) => {
+                                      const opt = CURRENCY_OPTIONS.find((o) => o.symbol === sym);
+                                      const code = opt?.code || sym;
+                                      return (
+                                        <span key={sym} className="rounded bg-cyan-400/10 px-1.5 py-0.5 text-[10px] font-semibold text-cyan-400 inline-flex items-center gap-1">
+                                          {opt && <img src={opt.flag} alt={opt.flagAlt} className="w-3.5 h-3.5 rounded-full object-cover" />}
+                                          {code} ({sym})
+                                        </span>
+                                      );
+                                    });
+                                  })()}
                                 </div>
                               </td>
                               <td className="px-4 py-3 text-sm text-muted-foreground max-w-[200px] truncate" title={product.notes || ''}>{product.notes || '—'}</td>
@@ -2032,7 +2220,16 @@ export default function AdminPage() {
                         <div className="p-4">
                           <div className="flex items-center justify-between mb-2">
                             <span className="text-sm font-medium">Banner #{banner.id}</span>
-                            <span className="text-xs text-muted-foreground">{t('Sort:', '排序：', adminLang)} {banner.sort_order}</span>
+                            <select
+                              value={banner.sort_order}
+                              onChange={(e) => handleReorderBanner(banner.id, parseInt(e.target.value))}
+                              className="rounded-lg border border-border bg-background px-2 py-1 text-xs font-medium text-foreground cursor-pointer hover:bg-secondary transition-colors"
+                              title={t('Sort Order', '排序', adminLang)}
+                            >
+                              {Array.from({ length: banners.length }, (_, i) => i + 1).map(n => (
+                                <option key={n} value={n}>{n}</option>
+                              ))}
+                            </select>
                           </div>
                           <div className="space-y-1 text-xs text-muted-foreground mb-3">
                             {enTrans && <div>EN: {enTrans.title || t('(no title)', '(无标题)', adminLang)} {enTrans.image_key ? '✓ ' + t('Image', '图片', adminLang) : '✗ ' + t('Image', '图片', adminLang)}</div>}
@@ -2106,15 +2303,74 @@ export default function AdminPage() {
         onCancel={() => {
           setCropModalVisible(false);
           setCropImageSrc('');
+          setCropOriginalSrc('');
           setCropTargetImg(null);
         }}
-        onConfirm={(croppedData, dimensions) => {
-          // Update the target image with cropped data
+        onConfirm={async (croppedData, dimensions) => {
+          // Close the modal immediately for a responsive feel
+          setCropModalVisible(false);
+
+          // Convert the cropped data URL to a Blob
+          const blob = await (async (): Promise<Blob | null> => {
+            try {
+              const res = await fetch(croppedData);
+              return await res.blob();
+            } catch {
+              return null;
+            }
+          })();
+
+          if (blob && cropTargetImg && cropOriginalSrc) {
+            // If the original image is one of ours (R2 URL or /api/image proxy with a known key),
+            // overwrite the same object so no orphan file is left behind.
+            const r2Base = (() => {
+              // Direct R2 URL: https://images.vapedeals360.com/content/<id>/<file>
+              const directMatch = cropOriginalSrc.match(/https?:\/\/[^\/]+\/(content\/\d+\/[^?#]+)/i);
+              if (directMatch) return directMatch[1];
+              // Proxy URL: /api/image?key=<encoded content/<id>/<file>>
+              const proxyMatch = cropOriginalSrc.match(/\/api\/image\?key=([^&]+)/i);
+              if (proxyMatch) {
+                try {
+                  const key = decodeURIComponent(proxyMatch[1]).split('?')[0];
+                  if (/^content\/\d+\//i.test(key)) return key;
+                } catch { /* ignore */ }
+              }
+              return null;
+            })();
+
+            if (r2Base) {
+              try {
+                const upRes = await fetch(
+                  `/api/upload?folder=content&custom_file_name=${encodeURIComponent(r2Base.replace(/^content\//, ''))}`,
+                  { method: 'POST', headers: { 'Content-Type': 'image/jpeg' }, body: blob }
+                );
+                if (upRes.ok) {
+                  const upData = await upRes.json();
+                  const finalUrl = upData?.data?.url || upData?.data?.key;
+                  if (finalUrl) {
+                    const busted = `${finalUrl}${finalUrl.includes('?') ? '&' : '?'}v=${Date.now()}`;
+                    cropTargetImg.src = busted;
+                    // Sync Quill state after src update
+                    cropTargetImg.dispatchEvent(new Event('input', { bubbles: true }));
+                    setCropImageSrc('');
+                    setCropOriginalSrc('');
+                    setCropTargetImg(null);
+                    return;
+                  }
+                }
+              } catch (err) {
+                console.error('[crop] Failed to overwrite image:', err);
+              }
+            }
+          }
+
+          // Fallback: show the cropped data URL directly (will be re-uploaded on publish as base64)
           if (cropTargetImg) {
             cropTargetImg.src = croppedData;
+            cropTargetImg.dispatchEvent(new Event('input', { bubbles: true }));
           }
-          setCropModalVisible(false);
           setCropImageSrc('');
+          setCropOriginalSrc('');
           setCropTargetImg(null);
         }}
         title={t('Crop Image', '裁剪图片', adminLang)}
@@ -2130,7 +2386,7 @@ export interface RichTextEditorRef {
   uploadBase64Images: (html: string) => Promise<string>;
 }
 
-const RichTextEditor = forwardRef<RichTextEditorRef, { value: string; onChange: (v: string) => void }>(function RichTextEditor({ value, onChange }, ref) {
+const RichTextEditor = forwardRef<RichTextEditorRef, { value: string; onChange: (v: string) => void; pageId?: number | null }>(function RichTextEditor({ value, onChange, pageId }, ref) {
   const containerRef = useRef<HTMLDivElement>(null);
   const [formatPainterActive, setFormatPainterActive] = useState(false);
   const [showTableModal, setShowTableModal] = useState(false);
@@ -2684,9 +2940,9 @@ const RichTextEditor = forwardRef<RichTextEditorRef, { value: string; onChange: 
         if (nextSibling && nextSibling.tagName === 'BR' && (nextSibling as HTMLElement).style.clear) {
           nextSibling.remove();
         }
-        // Persist the class via Quill's format API so it survives re-renders
+        // Persist the class via Quill's format API (silent = no React re-render, no scroll jump)
         persistImageFormats(activeImg);
-        requestAnimationFrame(() => positionSelectionBox());
+        positionSelectionBox();
       };
 
       alignLeftBtn.addEventListener('click', () => applyAlignment('img-align-left'));
@@ -2730,7 +2986,7 @@ const RichTextEditor = forwardRef<RichTextEditorRef, { value: string; onChange: 
         else if (borderClass === 'img-border-thin') borderThinBtn.classList.add('active');
         else if (borderClass === 'img-border-rounded') borderRoundedBtn.classList.add('active');
         else if (borderClass === 'img-border-shadow') borderShadowBtn.classList.add('active');
-        // Persist the class via Quill's format API so it survives re-renders
+        // Persist via Quill's format API (silent = no React re-render, no scroll jump)
         persistImageFormats(activeImg);
       };
 
@@ -2772,9 +3028,9 @@ const RichTextEditor = forwardRef<RichTextEditorRef, { value: string; onChange: 
       imgToolbar.appendChild(cropGroup);
 
       // Set initial active states based on current classes
-      if (img.classList.contains('img-align-left')) alignLeftBtn.classList.add('active');
+      if (img.classList.contains('img-align-center')) alignCenterBtn.classList.add('active');
       else if (img.classList.contains('img-align-right')) alignRightBtn.classList.add('active');
-      else alignCenterBtn.classList.add('active'); // default center
+      else alignLeftBtn.classList.add('active'); // default left
 
       if (img.classList.contains('img-border-thin')) borderThinBtn.classList.add('active');
       else if (img.classList.contains('img-border-rounded')) borderRoundedBtn.classList.add('active');
@@ -2827,15 +3083,30 @@ const RichTextEditor = forwardRef<RichTextEditorRef, { value: string; onChange: 
         const style = img.getAttribute('style') || '';
         const w = img.getAttribute('width') || '';
         const h = img.getAttribute('height') || '';
-        // Use quill.formatText to store extra attrs in the Delta
+        // Save scroll positions of all scrollable ancestors before formatText.
+        // formatText modifies DOM attrs which triggers reflow; large base64 images
+        // from Word imports can cause the browser to reset scroll during this reflow.
+        const scrollPositions: Array<[HTMLElement, number]> = [];
+        let node: HTMLElement | null = qlContainer;
+        while (node) {
+          const oy = getComputedStyle(node).overflowY;
+          if ((oy === 'auto' || oy === 'scroll') && node.scrollHeight > node.clientHeight) {
+            scrollPositions.push([node, node.scrollTop]);
+          }
+          node = node.parentElement;
+        }
+        const savedWindowScroll = window.scrollY;
         const formats: Record<string, string> = {};
         if (cls) formats['class'] = cls;
         if (style) formats['style'] = style;
         if (w) formats['width'] = w;
         if (h) formats['height'] = h;
         quill.formatText(offset, 1, formats, 'silent');
-        // Also sync the HTML to React state
-        setTimeout(() => { onChangeRef.current(quill.root.innerHTML); }, 0);
+        // Restore scroll positions synchronously after formatText (before browser paints)
+        for (const [el, top] of scrollPositions) {
+          el.scrollTop = top;
+        }
+        window.scrollTo(0, savedWindowScroll);
       } catch { /* ignore */ }
     };
 
@@ -2879,10 +3150,10 @@ const RichTextEditor = forwardRef<RichTextEditorRef, { value: string; onChange: 
       container.style.position = 'relative';
       container.appendChild(editorWrapper);
 
-      // Load the original image for cropping
+      // Load the original image for cropping (proxy through same-origin to avoid CORS canvas taint)
       const originalImg = new window.Image();
       originalImg.crossOrigin = 'anonymous';
-      originalImg.src = src;
+      originalImg.src = src.startsWith('http') ? `/api/image?key=${encodeURIComponent(src)}` : src;
 
       // Get container dimensions for positioning
       const containerRect = container.getBoundingClientRect();
@@ -3559,6 +3830,546 @@ const RichTextEditor = forwardRef<RichTextEditorRef, { value: string; onChange: 
     };
   }, []);
 
+  // ===== Table editing: floating toolbar (add/delete rows & columns), Backspace fix, content sync =====
+  useEffect(() => {
+    const container = containerRef.current;
+    if (!container) return;
+
+    let cleanup: (() => void) | null = null;
+    let pollTimer: ReturnType<typeof setTimeout> | null = null;
+
+    const setupEditor = (qlEditor: HTMLElement) => {
+      let activeTable: HTMLDivElement | null = null;
+      let toolbar: HTMLDivElement | null = null;
+      let hideTimer: ReturnType<typeof setTimeout> | null = null;
+
+      // Tracks all disconnected observers so we can reconnect later
+      const disconnected: Array<{ obs: MutationObserver; target: Node; options: MutationObserverInit }> = [];
+      const blockedObservers = new WeakSet<MutationObserver>();
+      let originalObserve: any = null;
+      let updateLocked = false;
+
+      const getQuill = () => {
+        if (!QuillClass) return null;
+        const qlContainer = container.querySelector('.ql-container') as HTMLElement | null;
+        if (!qlContainer) return null;
+        return QuillClass.find(qlContainer);
+      };
+
+      // ---------- Aggressively suspend ALL Quill MutationObservers ----------
+      // Quill (v2) keeps its observer on quill.editor.observer. To be safe we
+      // also walk every own/inherited property of the quill instance and its
+      // major modules and disconnect any MutationObserver we find. Then we
+      // monkey-patch MutationObserver.prototype.observe to block any attempt
+      // to re-observe while the lock is held. Also lock quill.update() to a
+      // no-op so nothing can trigger a re-render from inside a table cell.
+      const suspendQuill = () => {
+        if (updateLocked) return;
+        updateLocked = true;
+
+        const quill = getQuill();
+        if (!quill) return;
+
+        // Lock quill.update()
+        const origUpdate = quill.update.bind(quill);
+        (quill as any).__tableEditingOrigUpdate = origUpdate;
+        quill.update = ((...args: any[]) => {
+          // Swallow all update calls while user is editing a table cell
+          return;
+        }) as any;
+
+        // Collect candidate objects to scan for MutationObservers
+        const candidates: any[] = [
+          quill,
+          quill.editor,
+          quill.scroll,
+          quill.keyboard,
+          quill.clipboard,
+          quill.history,
+          quill.selection,
+          quill.uploader,
+        ];
+        // Also include any modules registered on quill
+        if (quill.options?.modules) {
+          Object.values(quill.options.modules).forEach((m: any) => {
+            if (m && typeof m === 'object') candidates.push(m);
+          });
+        }
+
+        const seen: any[] = [];
+        const findObservers = (obj: any, depth: number) => {
+          if (!obj || depth > 3 || seen.includes(obj)) return;
+          seen.push(obj);
+          for (const key of Object.keys(obj)) {
+            try {
+              const val = obj[key];
+              if (val instanceof MutationObserver) {
+                if (blockedObservers.has(val)) continue;
+                blockedObservers.add(val);
+                // We can't read the observed node from the observer directly,
+                // but we know Quill's editor observer watches quill.root.
+                const target = quill.root || qlEditor;
+                disconnected.push({
+                  obs: val,
+                  target,
+                  options: { characterData: true, childList: true, subtree: true, attributes: true },
+                });
+              } else if (val && typeof val === 'object' && depth < 3) {
+                findObservers(val, depth + 1);
+              }
+            } catch (_) { /* ignore access errors */ }
+          }
+        };
+        candidates.forEach((c) => findObservers(c, 0));
+
+        // Disconnect all collected observers
+        disconnected.forEach(({ obs }) => {
+          try { obs.disconnect(); } catch (_) { /* */ }
+        });
+
+        // Block any further MutationObserver.observe calls during editing
+        if (!originalObserve) {
+          originalObserve = MutationObserver.prototype.observe;
+          MutationObserver.prototype.observe = function (this: MutationObserver, ...args: any[]) {
+            if (blockedObservers.has(this)) return; // swallow
+            return originalObserve.apply(this, args as any);
+          };
+        }
+      };
+
+      const resumeQuill = () => {
+        if (!updateLocked) return;
+        updateLocked = false;
+
+        const quill = getQuill();
+
+        // Restore MutationObserver.prototype.observe
+        if (originalObserve) {
+          MutationObserver.prototype.observe = originalObserve;
+          originalObserve = null;
+        }
+
+        // Reconnect all disconnected observers
+        disconnected.forEach(({ obs, target, options }) => {
+          blockedObservers.delete(obs);
+          try { obs.observe(target, options); } catch (_) { /* */ }
+        });
+        disconnected.length = 0;
+
+        // Restore quill.update and trigger a single silent reconciliation
+        if (quill) {
+          if ((quill as any).__tableEditingOrigUpdate) {
+            quill.update = (quill as any).__tableEditingOrigUpdate;
+            delete (quill as any).__tableEditingOrigUpdate;
+          }
+          try { quill.update('silent'); } catch (_) { /* */ }
+          onChangeRef.current(quill.root.innerHTML);
+        }
+      };
+
+      // ---- Ensure all existing table cells are editable ----
+      const ensureCellsEditable = (root: HTMLElement) => {
+        root.querySelectorAll('.table-wrapper').forEach((wrapper) => {
+          if (wrapper.getAttribute('contenteditable') !== 'false') {
+            wrapper.setAttribute('contenteditable', 'false');
+          }
+        });
+        root.querySelectorAll('.table-wrapper td, .table-wrapper th').forEach((cell) => {
+          if (cell.getAttribute('contenteditable') !== 'true') {
+            cell.setAttribute('contenteditable', 'true');
+          }
+        });
+      };
+      ensureCellsEditable(qlEditor);
+
+      // ---- Caret position helpers ----
+      const isCaretAtStart = (cell: HTMLElement): boolean => {
+        const sel = window.getSelection();
+        if (!sel || sel.rangeCount === 0) return false;
+        const range = sel.getRangeAt(0);
+        if (!range.collapsed) return false;
+        const pre = range.cloneRange();
+        pre.selectNodeContents(cell);
+        pre.setEnd(range.startContainer, range.startOffset);
+        return pre.toString().length === 0;
+      };
+      const isCaretAtEnd = (cell: HTMLElement): boolean => {
+        const sel = window.getSelection();
+        if (!sel || sel.rangeCount === 0) return false;
+        const range = sel.getRangeAt(0);
+        if (!range.collapsed) return false;
+        const post = range.cloneRange();
+        post.selectNodeContents(cell);
+        post.setStart(range.endContainer, range.endOffset);
+        return post.toString().length === 0;
+      };
+
+      // ---- Floating toolbar ----
+      const ensureToolbar = () => {
+        if (toolbar) return toolbar;
+        toolbar = document.createElement('div');
+        toolbar.className = 'table-edit-toolbar';
+        toolbar.innerHTML = `
+          <button type="button" data-action="add-row-above" title="Add row above">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg>
+          </button>
+          <button type="button" data-action="add-row-below" title="Add row below">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="M12 5v14M5 19h14"/></svg>
+          </button>
+          <span class="table-toolbar-sep"></span>
+          <button type="button" data-action="add-col-left" title="Add column left">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="M5 12h14M12 5v14"/></svg>
+          </button>
+          <button type="button" data-action="add-col-right" title="Add column right">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="M5 12h14M19 5v14"/></svg>
+          </button>
+          <span class="table-toolbar-sep"></span>
+          <button type="button" data-action="del-row" title="Delete row">
+            <svg width="16" height="16" viewBox="0 0 24 24"><rect x="3" y="9" width="18" height="6" rx="1" fill="#f3f4f6" stroke="#6b7280" stroke-width="1.6"/><line x1="16" y1="4" x2="21" y2="9" stroke="#ef4444" stroke-width="2.2" stroke-linecap="round"/><line x1="21" y1="4" x2="16" y2="9" stroke="#ef4444" stroke-width="2.2" stroke-linecap="round"/></svg>
+          </button>
+          <button type="button" data-action="del-col" title="Delete column">
+            <svg width="16" height="16" viewBox="0 0 24 24"><rect x="9" y="3" width="6" height="18" rx="1" fill="#f3f4f6" stroke="#6b7280" stroke-width="1.6"/><line x1="4" y1="16" x2="9" y2="21" stroke="#ef4444" stroke-width="2.2" stroke-linecap="round"/><line x1="9" y1="16" x2="4" y2="21" stroke="#ef4444" stroke-width="2.2" stroke-linecap="round"/></svg>
+          </button>
+        `;
+        toolbar.addEventListener('mousedown', (e) => e.preventDefault());
+        toolbar.addEventListener('click', (e) => {
+          const btn = (e.target as HTMLElement).closest('button[data-action]') as HTMLButtonElement | null;
+          if (!btn || !activeTable) return;
+          e.stopPropagation();
+          handleAction(btn.dataset.action as string);
+        });
+        toolbar.addEventListener('mouseenter', () => { if (hideTimer) clearTimeout(hideTimer); });
+        toolbar.addEventListener('mouseleave', hideToolbarSoon);
+        container.appendChild(toolbar);
+        return toolbar;
+      };
+
+      const positionToolbar = () => {
+        if (!toolbar || !activeTable) return;
+        const containerRect = container.getBoundingClientRect();
+        const tableRect = activeTable.getBoundingClientRect();
+        const top = tableRect.top - containerRect.top - 38;
+        const left = tableRect.left - containerRect.left;
+        toolbar.style.top = (top < 4 ? tableRect.bottom - containerRect.top + 6 : top) + 'px';
+        toolbar.style.left = Math.max(0, left) + 'px';
+        toolbar.style.display = 'flex';
+      };
+
+      const showToolbar = (wrapper: HTMLDivElement) => {
+        activeTable = wrapper;
+        ensureToolbar();
+        positionToolbar();
+      };
+      const hideToolbarSoon = () => {
+        if (hideTimer) clearTimeout(hideTimer);
+        hideTimer = setTimeout(() => {
+          if (toolbar) toolbar.style.display = 'none';
+          activeTable = null;
+        }, 250);
+      };
+
+      const getCellPosition = (cell: HTMLTableCellElement): { row: number; col: number } | null => {
+        const row = cell.parentElement as HTMLTableRowElement | null;
+        if (!row) return null;
+        const table = row.closest('table');
+        if (!table) return null;
+        const rows = Array.from(table.rows);
+        const rowIdx = rows.indexOf(row);
+        const colIdx = Array.from(row.cells).indexOf(cell);
+        if (rowIdx < 0 || colIdx < 0) return null;
+        return { row: rowIdx, col: colIdx };
+      };
+
+      const newCell = (tag: 'td' | 'th'): HTMLTableCellElement => {
+        const cell = document.createElement(tag);
+        cell.setAttribute('contenteditable', 'true');
+        cell.innerHTML = '&nbsp;';
+        return cell;
+      };
+
+      const handleAction = (action: string) => {
+        const sel = window.getSelection();
+        let targetCell: HTMLTableCellElement | null = null;
+        if (sel && sel.rangeCount > 0) {
+          let node: Node | null = sel.getRangeAt(0).startContainer;
+          if (node && node.nodeType === Node.TEXT_NODE) node = node.parentElement;
+          targetCell = (node as HTMLElement | null)?.closest('td, th') as HTMLTableCellElement | null;
+        }
+        if (!targetCell && activeTable) {
+          targetCell = activeTable.querySelector('td, th') as HTMLTableCellElement | null;
+        }
+        if (!targetCell) return;
+
+        const pos = getCellPosition(targetCell);
+        if (!pos) return;
+        const table = targetCell.closest('table') as HTMLTableElement;
+        const rows = Array.from(table.rows);
+        const isHeader = (cell: Element) => cell.tagName.toLowerCase() === 'th';
+        const isLastRow = rows.length <= 1;
+        const isLastCol = rows[0] && rows[0].cells.length <= 1;
+
+        switch (action) {
+          case 'add-row-above': {
+            const newRow = table.insertRow(pos.row);
+            const colCount = rows[0].cells.length;
+            for (let c = 0; c < colCount; c++) newRow.appendChild(newCell(pos.row === 0 ? 'th' : 'td'));
+            break;
+          }
+          case 'add-row-below': {
+            const newRow = table.insertRow(pos.row + 1);
+            const colCount = rows[0].cells.length;
+            for (let c = 0; c < colCount; c++) newRow.appendChild(newCell('td'));
+            break;
+          }
+          case 'add-col-left':
+          case 'add-col-right': {
+            const insertAt = action === 'add-col-left' ? pos.col : pos.col + 1;
+            rows.forEach((tr) => {
+              const tag = isHeader(tr.cells[0]) ? 'th' : 'td';
+              const refCell = tr.cells[Math.min(insertAt, tr.cells.length)] || null;
+              const cell = newCell(tag);
+              if (refCell) tr.insertBefore(cell, refCell); else tr.appendChild(cell);
+            });
+            break;
+          }
+          case 'del-row': {
+            if (isLastRow) return;
+            table.deleteRow(pos.row);
+            break;
+          }
+          case 'del-col': {
+            if (isLastCol) return;
+            rows.forEach((tr) => { if (tr.cells[pos.col]) tr.removeChild(tr.cells[pos.col]); });
+            break;
+          }
+        }
+        requestAnimationFrame(() => positionToolbar());
+      };
+
+      const getTableWrapper = (node: Node | null): HTMLDivElement | null => {
+        if (!node) return null;
+        const el = node.nodeType === Node.TEXT_NODE ? node.parentElement : (node as HTMLElement);
+        return el?.closest('.ql-editor .table-wrapper') as HTMLDivElement | null;
+      };
+
+      // ---- Mouse events for toolbar ----
+      const onMouseOver = (e: Event) => {
+        const wrapper = (e.target as HTMLElement).closest('.table-wrapper') as HTMLDivElement | null;
+        if (wrapper && wrapper.closest('.ql-editor')) {
+          if (hideTimer) clearTimeout(hideTimer);
+          showToolbar(wrapper);
+          ensureCellsEditable(wrapper);
+        }
+      };
+      const onMouseOut = (e: MouseEvent) => {
+        const wrapper = (e.target as HTMLElement).closest('.table-wrapper') as HTMLDivElement | null;
+        const related = e.relatedTarget as HTMLElement | null;
+        if (wrapper && (!related || (!wrapper.contains(related) && !related.closest('.table-edit-toolbar')))) {
+          hideToolbarSoon();
+        }
+      };
+      const onClick = (e: MouseEvent) => {
+        const cell = (e.target as HTMLElement).closest('td, th') as HTMLTableCellElement | null;
+        if (cell) {
+          const wrapper = cell.closest('.table-wrapper') as HTMLDivElement;
+          if (wrapper && wrapper.closest('.ql-editor')) {
+            if (hideTimer) clearTimeout(hideTimer);
+            showToolbar(wrapper);
+          }
+        }
+      };
+
+      qlEditor.addEventListener('mouseover', onMouseOver);
+      qlEditor.addEventListener('mouseout', onMouseOut);
+      qlEditor.addEventListener('click', onClick);
+
+      // ---- Focus in/out: suspend/resume Quill ----
+      const onFocusIn = (e: FocusEvent) => {
+        if (getTableWrapper(e.target as Node)) {
+          suspendQuill();
+        }
+      };
+      const onFocusOut = (e: FocusEvent) => {
+        const wrapper = getTableWrapper(e.target as Node);
+        const related = e.relatedTarget as HTMLElement | null;
+        if (wrapper && (!related || !wrapper.contains(related))) {
+          setTimeout(() => {
+            // Only resume if focus is no longer in any table cell
+            if (!getTableWrapper(document.activeElement)) {
+              resumeQuill();
+            }
+          }, 0);
+        }
+      };
+      qlEditor.addEventListener('focusin', onFocusIn);
+      qlEditor.addEventListener('focusout', onFocusOut);
+
+      // ---- Keydown: stop Quill from seeing keys; prevent Backspace at boundary ----
+      const onKeyDown = (e: KeyboardEvent) => {
+        const target = e.target as HTMLElement;
+        if (!target) return;
+        const cell = target.closest('.ql-editor .table-wrapper td, .ql-editor .table-wrapper th') as HTMLElement | null;
+        if (!cell) return;
+
+        e.stopPropagation();
+
+        if (e.key === 'Backspace') {
+          const sel = window.getSelection();
+          const isEmpty = (cell.textContent || '').replace(/\u00a0/g, '').trim() === '';
+          if (isEmpty || (sel && sel.isCollapsed && isCaretAtStart(cell))) {
+            e.preventDefault();
+          }
+          return;
+        }
+        if (e.key === 'Delete') {
+          const sel = window.getSelection();
+          const isEmpty = (cell.textContent || '').replace(/\u00a0/g, '').trim() === '';
+          if (isEmpty || (sel && sel.isCollapsed && isCaretAtEnd(cell))) {
+            e.preventDefault();
+          }
+          return;
+        }
+        if (e.key === 'Enter' && !e.shiftKey) {
+          e.preventDefault();
+          document.execCommand('insertLineBreak');
+          return;
+        }
+      };
+      qlEditor.addEventListener('keydown', onKeyDown, true);
+
+      // ---- beforeinput: intercept ALL browser editing actions inside cells ----
+      // This fires before any DOM mutation and is more reliable than keydown
+      // for catching deletions (including IME, autocorrect, etc.)
+      const onBeforeInput = (e: InputEvent) => {
+        const target = e.target as HTMLElement;
+        if (!target) return;
+        const cell = target.closest('.ql-editor .table-wrapper td, .ql-editor .table-wrapper th') as HTMLElement | null;
+        if (!cell) return;
+
+        e.stopPropagation();
+
+        const deleteTypes = [
+          'deleteContentBackward',
+          'deleteContentForward',
+          'deleteWordBackward',
+          'deleteWordForward',
+          'deleteHardLineBackward',
+          'deleteHardLineForward',
+        ];
+        if (deleteTypes.includes(e.inputType)) {
+          // Check if there is anything to delete
+          const sel = window.getSelection();
+          if (!sel || sel.rangeCount === 0) {
+            e.preventDefault();
+            return;
+          }
+          const range = sel.getRangeAt(0);
+          if (!range.collapsed) {
+            // There is a selection — let browser delete it natively.
+            // With contenteditable=false on wrapper, it stays inside the cell.
+            return;
+          }
+          // Collapsed selection — check boundaries
+          if (e.inputType.includes('Backward') && isCaretAtStart(cell)) {
+            e.preventDefault();
+          } else if (e.inputType.includes('Forward') && isCaretAtEnd(cell)) {
+            e.preventDefault();
+          }
+          // Otherwise let browser delete natively — contenteditable=false on
+          // wrapper prevents crossing out of the cell boundary.
+        }
+        if (e.inputType === 'insertParagraph') {
+          e.preventDefault();
+          document.execCommand('insertLineBreak');
+        }
+      };
+      qlEditor.addEventListener('beforeinput', onBeforeInput, true);
+
+      // ---- Copy/Cut: stop Quill only ----
+      const stopQuill = (e: Event) => {
+        const target = e.target as HTMLElement;
+        if (target?.closest('.ql-editor .table-wrapper td, .ql-editor .table-wrapper th')) {
+          e.stopPropagation();
+        }
+      };
+      qlEditor.addEventListener('copy', stopQuill, true);
+      qlEditor.addEventListener('cut', stopQuill, true);
+
+      // ---- Paste: insert plain text to prevent nested tables ----
+      const onCellPaste = (e: ClipboardEvent) => {
+        const target = e.target as HTMLElement;
+        if (!target) return;
+        const cell = target.closest('.ql-editor .table-wrapper td, .ql-editor .table-wrapper th') as HTMLElement | null;
+        if (!cell) return;
+        e.preventDefault();
+        e.stopPropagation();
+        const text = (e.clipboardData?.getData('text/plain') || '').replace(/\r\n?/g, '\n');
+        const sel = window.getSelection();
+        if (!sel || sel.rangeCount === 0) return;
+        const range = sel.getRangeAt(0);
+        range.deleteContents();
+        const frag = document.createDocumentFragment();
+        text.split('\n').forEach((line, i) => {
+          if (i > 0) frag.appendChild(document.createElement('br'));
+          frag.appendChild(document.createTextNode(line));
+        });
+        range.insertNode(frag);
+        range.collapse(false);
+        sel.removeAllRanges();
+        sel.addRange(range);
+      };
+      qlEditor.addEventListener('paste', onCellPaste, true);
+
+      // ---- Observe structural DOM for newly added tables ----
+      const editorObserver = new MutationObserver((mutations) => {
+        let needsUpdate = false;
+        for (const m of mutations) {
+          m.addedNodes.forEach((node) => {
+            if (node.nodeType === 1) {
+              const el = node as HTMLElement;
+              if (el.classList?.contains('table-wrapper') || el.querySelector?.('.table-wrapper')) {
+                needsUpdate = true;
+              }
+            }
+          });
+        }
+        if (needsUpdate) ensureCellsEditable(qlEditor);
+      });
+      editorObserver.observe(qlEditor, { childList: true, subtree: true });
+
+      cleanup = () => {
+        qlEditor.removeEventListener('mouseover', onMouseOver);
+        qlEditor.removeEventListener('mouseout', onMouseOut);
+        qlEditor.removeEventListener('click', onClick);
+        qlEditor.removeEventListener('focusin', onFocusIn);
+        qlEditor.removeEventListener('focusout', onFocusOut);
+        qlEditor.removeEventListener('keydown', onKeyDown, true);
+        qlEditor.removeEventListener('beforeinput', onBeforeInput, true);
+        qlEditor.removeEventListener('copy', stopQuill, true);
+        qlEditor.removeEventListener('cut', stopQuill, true);
+        qlEditor.removeEventListener('paste', onCellPaste, true);
+        editorObserver.disconnect();
+        if (updateLocked) resumeQuill();
+        if (hideTimer) clearTimeout(hideTimer);
+        if (toolbar) toolbar.remove();
+      };
+    };
+
+    // Poll for .ql-editor (ReactQuill is dynamically loaded)
+    let elapsed = 0;
+    const tryInit = () => {
+      const qlEditor = container.querySelector('.ql-editor') as HTMLElement | null;
+      if (qlEditor) { setupEditor(qlEditor); return; }
+      if (elapsed < 30000) { elapsed += 200; pollTimer = setTimeout(tryInit, 200); }
+    };
+    pollTimer = setTimeout(tryInit, 50);
+
+    return () => {
+      if (pollTimer) clearTimeout(pollTimer);
+      if (cleanup) cleanup();
+    };
+  }, []);
+
   // Quill instance ref - populated lazily
   const quillInstanceRef = useRef<any>(null);
 
@@ -3716,14 +4527,39 @@ const RichTextEditor = forwardRef<RichTextEditorRef, { value: string; onChange: 
     return new File([bestBlob], fileName, { type: outputType });
   }, []);
 
-  // Upload a single image file to object storage, return URL or null
-  const uploadImageFile = useCallback(async (file: File): Promise<string | null> => {
+  // Convert a public image URL to a same-origin proxy URL for CORS-safe canvas operations
+  const toCorsSafeUrl = useCallback((url: string): string => {
+    if (!url || url.startsWith('data:') || url.startsWith('/api/image')) return url;
+    if (url.startsWith('http://') || url.startsWith('https://')) {
+      return `/api/image?key=${encodeURIComponent(url)}`;
+    }
+    return url;
+  }, []);
+
+  // Generate a short random slot id for per-page image paths, e.g. "img-a3f2k9"
+  const generateImageSlot = useCallback((): string => {
+    const rand = Math.random().toString(36).slice(2, 8);
+    return `img-${rand}`;
+  }, []);
+
+  // Upload a single image file to object storage, return URL or null.
+  // When pageId is available, the file is stored at content/<pageId>/<slot>.jpg
+  // so that cropping/recropping overwrites the same key and deleting the page
+  // can wipe the whole directory without HTML parsing.
+  const uploadImageFile = useCallback(async (file: File, slot?: string): Promise<string | null> => {
     try {
       const processedFile = await compressImage(file);
-      const formData = new FormData();
-      formData.append('file', processedFile);
-      formData.append('folder', 'content');
-      const res = await fetch('/api/upload', { method: 'POST', body: formData });
+      let uploadUrl = '/api/upload?folder=content';
+      if (pageId) {
+        const useSlot = slot || generateImageSlot();
+        uploadUrl += `&custom_file_name=${encodeURIComponent(`${pageId}/${useSlot}.jpg`)}`;
+      }
+      // Send raw binary body — /api/upload reads arrayBuffer() directly (FormData would store the whole multipart envelope)
+      const res = await fetch(uploadUrl, {
+        method: 'POST',
+        headers: { 'Content-Type': processedFile.type || 'image/jpeg' },
+        body: processedFile,
+      });
       if (!res.ok) throw new Error('Upload failed');
       const data = await res.json();
       return data?.data?.url || data?.data?.key || data?.url || data?.key || null;
@@ -3731,7 +4567,7 @@ const RichTextEditor = forwardRef<RichTextEditorRef, { value: string; onChange: 
       console.error('Image upload failed:', err);
       return null;
     }
-  }, [compressImage]);
+  }, [compressImage, pageId, generateImageSlot]);
 
   // Keep ref in sync
   uploadImageFileRef.current = uploadImageFile;
@@ -3777,7 +4613,8 @@ const RichTextEditor = forwardRef<RichTextEditorRef, { value: string; onChange: 
   }, [uploadImageFile]);
 
   // Resize an image in the editor to the given display dimensions and re-upload the resized version.
-  // This replaces the full-size stored image with a smaller one to save storage.
+  // When pageId is present, the resized image overwrites the same R2 key (no orphan);
+  // otherwise falls back to uploading a new file and deleting the old one.
   const resizeImageToStorage = useCallback(async (imgElement: HTMLImageElement, targetWidth: number, targetHeight: number) => {
     const src = imgElement.getAttribute('src');
     if (!src || src.startsWith('data:')) return; // skip base64 or missing
@@ -3786,10 +4623,11 @@ const RichTextEditor = forwardRef<RichTextEditorRef, { value: string; onChange: 
       // Load the image into a canvas at the target dimensions
       const img = new window.Image();
       img.crossOrigin = 'anonymous';
+      const corsSafeSrc = src.startsWith('http') ? `/api/image?key=${encodeURIComponent(src)}` : src;
       await new Promise<void>((resolve, reject) => {
         img.onload = () => resolve();
         img.onerror = reject;
-        img.src = src;
+        img.src = corsSafeSrc;
       });
 
       const canvas = document.createElement('canvas');
@@ -3801,36 +4639,58 @@ const RichTextEditor = forwardRef<RichTextEditorRef, { value: string; onChange: 
       // Determine format
       const isJpg = src.includes('.jpg') || src.includes('.jpeg') || !src.includes('.png');
       const outputType = isJpg ? 'image/jpeg' : 'image/png';
-      const ext = isJpg ? 'jpg' : 'png';
 
       const blob = await new Promise<Blob>((resolve) => {
         canvas.toBlob((b) => resolve(b!), outputType, outputType === 'image/jpeg' ? 0.85 : undefined);
       });
 
-      const file = new File([blob], `resized-${Date.now()}.${ext}`, { type: outputType });
       console.log(`[resizeImageToStorage] Resized to ${targetWidth}x${targetHeight}, size: ${(blob.size / 1024).toFixed(0)}KB`);
 
-      // Upload resized image
-      const newUrl = await uploadImageFile(file);
-      if (!newUrl) {
+      // Determine the final URL. If the original image lives under content/<pageId>/,
+      // overwrite the same key so no orphan is produced.
+      const srcWithoutQuery = src.split('?')[0];
+      const contentMatch = srcWithoutQuery.match(/\/content\/\d+\/(img-[a-z0-9]+|cover)\.jpg$/i);
+      let finalUrl: string | null = null;
+
+      if (pageId && contentMatch) {
+        // Overwrite same key
+        const slot = contentMatch[1];
+        const customFileName = `${pageId}/${slot}.jpg`;
+        const res = await fetch(`/api/upload?folder=content&custom_file_name=${encodeURIComponent(customFileName)}`, {
+          method: 'POST',
+          headers: { 'Content-Type': outputType },
+          body: blob,
+        });
+        if (res.ok) {
+          const data = await res.json();
+          finalUrl = data?.data?.url || data?.data?.key || null;
+          console.log(`[resizeImageToStorage] Overwrote ${customFileName}`);
+        }
+      }
+
+      if (!finalUrl) {
+        // Fallback: upload as new file
+        const ext = isJpg ? 'jpg' : 'png';
+        const file = new File([blob], `resized-${Date.now()}.${ext}`, { type: outputType });
+        finalUrl = await uploadImageFile(file);
+      }
+
+      if (!finalUrl) {
         console.error('[resizeImageToStorage] Upload failed, keeping original');
         return;
       }
 
-      console.log(`[resizeImageToStorage] Uploaded resized image: ${newUrl}`);
+      // Append cache-buster so the browser reloads the overwritten image
+      const displayUrl = `${finalUrl}${finalUrl.includes('?') ? '&' : '?'}v=${Date.now()}`;
 
       // Replace src in the editor DOM and remove inline styles
-      // The new image has naturalWidth=targetWidth, naturalHeight=targetHeight,
-      // so inline width/height are no longer needed and would cause issues
-      // when Quill re-renders from Delta (stripping inline styles)
-      imgElement.setAttribute('src', newUrl);
+      imgElement.setAttribute('src', displayUrl);
       imgElement.removeAttribute('width');
       imgElement.removeAttribute('height');
       imgElement.style.width = '';
       imgElement.style.height = '';
 
       // Sync Quill content so state reflects the new src (without inline styles)
-      // Use quill.formatText to persist class/style attrs in the Delta model
       const container = containerRef.current;
       if (container) {
         const qlContainer = container.querySelector('.ql-container') as HTMLElement | null;
@@ -3838,7 +4698,6 @@ const RichTextEditor = forwardRef<RichTextEditorRef, { value: string; onChange: 
           try {
             const quill = QuillClass.find(qlContainer);
             if (quill) {
-              // Persist image class/style via the custom StyledImage blot
               try {
                 const blot = QuillClass.find(imgElement);
                 if (blot) {
@@ -3859,20 +4718,22 @@ const RichTextEditor = forwardRef<RichTextEditorRef, { value: string; onChange: 
         }
       }
 
-      // Delete the old image from storage (fire and forget)
-      const oldKey = resolveStorageKeyFromSrc(src);
-      if (oldKey) {
-        console.log(`[resizeImageToStorage] Deleting old image: ${oldKey}`);
-        fetch('/api/admin/cleanup-image', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ key: oldKey }),
-        }).catch((err) => console.error('[resizeImageToStorage] Failed to delete old image:', err));
+      // Delete old image only when we uploaded a new key (fallback path)
+      if (!contentMatch) {
+        const oldKey = resolveStorageKeyFromSrc(src);
+        if (oldKey) {
+          console.log(`[resizeImageToStorage] Deleting old image: ${oldKey}`);
+          fetch('/api/admin/cleanup-image', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ key: oldKey }),
+          }).catch((err) => console.error('[resizeImageToStorage] Failed to delete old image:', err));
+        }
       }
     } catch (err) {
       console.error('[resizeImageToStorage] Failed:', err);
     }
-  }, [uploadImageFile]);
+  }, [uploadImageFile, pageId]);
 
   // Keep the ref up to date for use in useEffect closures
   resizeImageToStorageRef.current = resizeImageToStorage;
@@ -4080,6 +4941,14 @@ const ContentPagesManager = forwardRef<ContentPagesManagerRef, { type: string; t
   const [listPublishMsg, setListPublishMsg] = useState<string | null>(null);
   const editorRef = useRef<RichTextEditorRef>(null);
 
+  // Global disclaimer settings modal state
+  const [showDisclaimerModal, setShowDisclaimerModal] = useState(false);
+  const [disclaimerLang, setDisclaimerLang] = useState('en');
+  const [disclaimerTranslations, setDisclaimerTranslations] = useState<Array<{ language: string; disclaimer: string; disclaimer_hidden: boolean; ai_disclosure: string; ai_disclosure_hidden: boolean }>>([]);
+  const [disclaimerLoading, setDisclaimerLoading] = useState(false);
+  const [disclaimerSaving, setDisclaimerSaving] = useState(false);
+  const [disclaimerSavedMsg, setDisclaimerSavedMsg] = useState<string | null>(null);
+
 
   const fetchPages = useCallback(async () => {
     setLoading(true);
@@ -4109,6 +4978,7 @@ const ContentPagesManager = forwardRef<ContentPagesManagerRef, { type: string; t
 
   const openEditForm = (page: typeof pages[0]) => {
     setEditingPage(page.id);
+    setIsNewDraft(false);
     setFormSlug(page.slug);
     setFormCoverImage(page.cover_image);
     setFormSortOrder(page.sort_order);
@@ -4117,27 +4987,121 @@ const ContentPagesManager = forwardRef<ContentPagesManagerRef, { type: string; t
 
     const translations = activeLanguages.map(l => {
       const existing = page.content_page_translations?.find((t: { language: string }) => t.language === l.code);
-      return existing || { language: l.code, title: '', content: '' };
+      return existing ? {
+        ...existing,
+      } : { language: l.code, title: '', content: '' };
     });
     setFormTranslations(translations);
     setPublishSuccess(false);
     setShowForm(true);
   };
 
-  const openNewForm = () => {
-    setEditingPage(null);
-    setFormSlug('');
-    setFormCoverImage(null);
-    setFormSortOrder(pages.length + 1);
-    setFormPublished(true);
-    setHasFormChanges(false);
-    const initialTranslations = [
-      { language: 'en', title: '', content: '' },
-      { language: 'zh', title: '', content: '' },
-    ];
-    setFormTranslations(initialTranslations);
-    setPublishSuccess(false);
-    setShowForm(true);
+  const [isNewDraft, setIsNewDraft] = useState(false);
+
+  const openNewForm = async () => {
+    // Create an empty draft server-side to obtain a page_id before entering the editor.
+    // This ensures all image uploads during editing go under content/<page_id>/.
+    try {
+      const res = await adminFetch('/api/admin/content-pages', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ type, draft: true, is_published: false }),
+      });
+      const json = await res.json();
+      if (!json.success || !json.data?.id) {
+        alert(json.error || 'Failed to create draft');
+        return;
+      }
+      setEditingPage(json.data.id);
+      setIsNewDraft(true);
+      setFormSlug('');
+      setFormCoverImage(null);
+      setFormSortOrder(pages.length + 1);
+      setFormPublished(true);
+      setHasFormChanges(false);
+      const initialTranslations = [
+        { language: 'en', title: '', content: '' },
+        { language: 'zh', title: '', content: '' },
+      ];
+      setFormTranslations(initialTranslations);
+      setPublishSuccess(false);
+      setShowForm(true);
+    } catch (err) {
+      console.error('Failed to create draft:', err);
+      alert('Failed to create draft');
+    }
+  };
+
+  // Close the editor. If this is a brand-new unpublished draft that the user
+  // abandoned, delete the draft and wipe its image directory.
+  const handleCloseEditor = async () => {
+    if (isNewDraft && editingPage && !formPublished) {
+      try {
+        await adminFetch('/api/admin/content-pages', {
+          method: 'DELETE',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ id: editingPage }),
+        });
+      } catch (err) {
+        console.error('Failed to delete abandoned draft:', err);
+      }
+    }
+    setIsNewDraft(false);
+    setShowForm(false);
+  };
+
+  // Open global disclaimer settings modal
+  const openDisclaimerModal = async () => {
+    setShowDisclaimerModal(true);
+    setDisclaimerLoading(true);
+    setDisclaimerSavedMsg(null);
+    setDisclaimerLang(activeLanguages[0]?.code || 'en');
+    try {
+      const res = await adminFetch('/api/admin/site-settings');
+      const json = await res.json();
+      if (json.success && json.data?.translations) {
+        const trs = activeLanguages.map(l => {
+          const existing = json.data.translations.find((t: { language: string }) => t.language === l.code);
+          return {
+            language: l.code,
+            disclaimer: existing?.disclaimer || '',
+            disclaimer_hidden: existing?.disclaimer_hidden ?? false,
+            ai_disclosure: existing?.ai_disclosure || '',
+            ai_disclosure_hidden: existing?.ai_disclosure_hidden ?? false,
+          };
+        });
+        setDisclaimerTranslations(trs);
+      } else {
+        setDisclaimerTranslations(activeLanguages.map(l => ({
+          language: l.code, disclaimer: '', disclaimer_hidden: false, ai_disclosure: '', ai_disclosure_hidden: false,
+        })));
+      }
+    } catch {
+      setDisclaimerTranslations(activeLanguages.map(l => ({
+        language: l.code, disclaimer: '', disclaimer_hidden: false, ai_disclosure: '', ai_disclosure_hidden: false,
+      })));
+    } finally {
+      setDisclaimerLoading(false);
+    }
+  };
+
+  const saveDisclaimer = async () => {
+    setDisclaimerSaving(true);
+    try {
+      const res = await adminFetch('/api/admin/site-settings', {
+        method: 'PUT',
+        body: JSON.stringify({ translations: disclaimerTranslations }),
+      });
+      const json = await res.json();
+      if (json.success) {
+        setDisclaimerSavedMsg(t('Saved successfully!', '保存成功!', lang));
+        setTimeout(() => setDisclaimerSavedMsg(null), 3000);
+      }
+    } catch {
+      // ignore
+    } finally {
+      setDisclaimerSaving(false);
+    }
   };
 
   // Mark form as changed
@@ -4198,11 +5162,17 @@ const ContentPagesManager = forwardRef<ContentPagesManagerRef, { type: string; t
             const ext = mimeType.split('/')[1] || 'png';
             const file = new File([blob], `publish-image-${Date.now()}-${i}.${ext}`, { type: mimeType });
             console.log(`[handlePublish] Uploading base64 image ${i + 1}/${matches.length}, size: ${(file.size / 1024).toFixed(0)}KB`);
-            // Upload directly via /api/upload
-            const formData = new FormData();
-            formData.append('file', file);
-            formData.append('folder', 'content');
-            const uploadRes = await fetch('/api/upload', { method: 'POST', body: formData });
+            // Upload directly via /api/upload — send raw binary, not FormData.
+            // When editingPage is available, use a deterministic slot under content/<pageId>/.
+            const slot = `img-${Math.random().toString(36).slice(2, 8)}`;
+            const uploadUrl = editingPage
+              ? `/api/upload?folder=content&custom_file_name=${encodeURIComponent(`${editingPage}/${slot}.jpg`)}`
+              : '/api/upload?folder=content';
+            const uploadRes = await fetch(uploadUrl, {
+              method: 'POST',
+              headers: { 'Content-Type': mimeType },
+              body: file,
+            });
             if (!uploadRes.ok) throw new Error(`Upload failed: ${uploadRes.status}`);
             const uploadData = await uploadRes.json();
             const url = uploadData?.data?.url || uploadData?.data?.key || uploadData?.url || uploadData?.key;
@@ -4253,7 +5223,7 @@ const ContentPagesManager = forwardRef<ContentPagesManagerRef, { type: string; t
         type,
         slug: trimmedSlug,
         cover_image: formCoverImage,
-        sort_order: formSortOrder,
+        // sort_order managed via list dropdown, not form
         is_published: true,
         translations: publishTranslations.map(t => ({
           id: t.id,
@@ -4294,6 +5264,7 @@ const ContentPagesManager = forwardRef<ContentPagesManagerRef, { type: string; t
         }
         setFormPublished(true);
         setHasFormChanges(false);
+        setIsNewDraft(false);
         setPublishSuccess(true);
         setTimeout(() => setPublishSuccess(false), 3000);
         fetchPages();
@@ -4327,6 +5298,22 @@ const ContentPagesManager = forwardRef<ContentPagesManagerRef, { type: string; t
     }
   };
 
+  const handleReorder = async (pageId: number, newSortOrder: number) => {
+    try {
+      const res = await adminFetch('/api/admin/content-pages', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ id: pageId, sort_order: newSortOrder }),
+      });
+      const json = await res.json();
+      if (json.success) {
+        fetchPages();
+      }
+    } catch (err) {
+      console.error('Reorder error:', err);
+    }
+  };
+
   const handleDelete = async (id: number) => {
     if (!confirm(t('Delete this page?', '确定删除此页面？', lang))) return;
     try {
@@ -4350,7 +5337,7 @@ const ContentPagesManager = forwardRef<ContentPagesManagerRef, { type: string; t
         <div className="flex items-center justify-between sticky top-0 z-20 bg-background pt-2 pb-4 border-b border-border">
           <div className="flex items-center gap-3">
             <button
-              onClick={() => setShowForm(false)}
+              onClick={handleCloseEditor}
               className="rounded-lg border border-border p-2 hover:bg-secondary transition-colors text-muted-foreground hover:text-foreground"
             >
               <ArrowLeft className="w-4 h-4" />
@@ -4377,20 +5364,17 @@ const ContentPagesManager = forwardRef<ContentPagesManagerRef, { type: string; t
         </div>
 
         <div className="space-y-4 flex-1 pr-1 pt-4">
-          <div className="grid grid-cols-2 gap-4">
-            <div>
-              <label className="block text-sm font-medium mb-1">Slug</label>
-              <input value={formSlug} onChange={e => { markChanged(); setFormSlug(e.target.value); }} className="w-full rounded-lg border border-border bg-background px-3 py-2 text-sm" placeholder="e.g. best-pod-system-2025" />
-            </div>
-            <div>
-              <label className="block text-sm font-medium mb-1">{t('Sort Order', '排序', lang)}</label>
-              <input type="number" value={formSortOrder} onChange={e => { markChanged(); setFormSortOrder(parseInt(e.target.value) || 0); }} className="w-full rounded-lg border border-border bg-background px-3 py-2 text-sm" />
+          <div>
+            <label className="block text-sm font-medium mb-1">Slug</label>
+            <div className="flex gap-2">
+              <input value={formSlug} onChange={e => { markChanged(); setFormSlug(e.target.value); }} className="flex-1 rounded-lg border border-border bg-background px-3 py-2 text-sm" placeholder="e.g. best-pod-system-2025" />
+              <button type="button" onClick={() => { markChanged(); setFormSlug(prev => prev.replace(/\s+/g, '-')); }} className="rounded-lg border border-border bg-secondary px-3 py-2 text-sm font-medium hover:bg-accent whitespace-nowrap">Replace spaces</button>
             </div>
           </div>
 
           <div>
             <label className="block text-sm font-medium mb-1">{t('Cover Image', '封面图', lang)}</label>
-            <ImageUpload value={formCoverImage} onChange={setFormCoverImage} aspectRatio={16 / 9} recommendedSize="480x270px" label={t('Cover', '封面', lang)} folder="content" lang={lang} />
+            <ImageUpload value={formCoverImage} onChange={setFormCoverImage} aspectRatio={16 / 9} recommendedSize="480x270px" label={t('Cover', '封面', lang)} folder="content" lang={lang} customFileName={editingPage ? `${editingPage}/cover.jpg` : undefined} />
           </div>
 
           {/* Language toggle + unified editor */}
@@ -4420,6 +5404,7 @@ const ContentPagesManager = forwardRef<ContentPagesManagerRef, { type: string; t
                   <RichTextEditor
                     ref={editorRef}
                     value={tr.content}
+                    pageId={editingPage}
                     onChange={(v: string) => { markChanged(); setFormTranslations(prev => prev.map((t, i) => i === idx ? { ...t, content: v } : t)); }}
                   />
                 </div>
@@ -4441,12 +5426,21 @@ const ContentPagesManager = forwardRef<ContentPagesManagerRef, { type: string; t
             <span className="text-xs text-purple-400 font-medium">{listPublishMsg}</span>
           )}
         </div>
-        <button
-          onClick={openNewForm}
-          className="rounded-lg bg-primary px-4 py-2 text-sm font-semibold text-primary-foreground hover:bg-primary/90"
-        >
-          + {t('Add Page', '添加页面', lang)}
-        </button>
+        <div className="flex items-center gap-2">
+          <button
+            onClick={openDisclaimerModal}
+            className="rounded-lg border border-border px-3 py-2 text-sm font-medium text-muted-foreground hover:text-foreground hover:bg-secondary transition-colors"
+            title={t('Disclaimer Settings', '声明设置', lang)}
+          >
+            {t('Disclaimer', '声明', lang)}
+          </button>
+          <button
+            onClick={openNewForm}
+            className="rounded-lg bg-primary px-4 py-2 text-sm font-semibold text-primary-foreground hover:bg-primary/90"
+          >
+            + {t('Add Page', '添加页面', lang)}
+          </button>
+        </div>
       </div>
 
       {loading ? (
@@ -4462,15 +5456,26 @@ const ContentPagesManager = forwardRef<ContentPagesManagerRef, { type: string; t
             return (
               <div key={page.id} className="rounded-xl border border-border bg-card p-4 flex items-center justify-between">
                 <div className="flex items-center gap-3">
+                  <span className="text-sm font-mono font-bold text-muted-foreground w-8 shrink-0">#{page.id}</span>
                   <div className="h-10 w-10 rounded-lg bg-secondary flex items-center justify-center overflow-hidden">
                     {page.cover_image ? <img src={getImageUrl(page.cover_image)} alt="" className="w-full h-full object-cover" /> : <span className="text-xs font-bold text-primary">{enTitle.charAt(0)}</span>}
                   </div>
                   <div>
                     <p className="text-sm font-medium">{enTitle}</p>
-                    <p className="text-xs text-muted-foreground">{page.slug} &middot; {page.is_published ? t('Published', '已发布', lang) : t('Unpublished', '未发布', lang)}</p>
+                    <p className="text-xs text-muted-foreground flex items-center gap-2">{page.slug} {page.is_published ? <span className="rounded-md px-2 py-0.5 text-[10px] font-medium bg-green-900/50 text-green-400 border border-green-700">{t('Published', '已发布', lang)}</span> : <span className="rounded-md px-2 py-0.5 text-[10px] font-medium bg-gray-800/50 text-gray-400 border border-gray-700">{t('Unpublished', '未发布', lang)}</span>}</p>
                   </div>
                 </div>
                 <div className="flex items-center gap-2">
+                  <select
+                    value={page.sort_order}
+                    onChange={(e) => handleReorder(page.id, parseInt(e.target.value))}
+                    className="rounded-lg border border-border bg-background px-2 py-1.5 text-xs font-medium text-foreground cursor-pointer hover:bg-secondary transition-colors"
+                    title={t('Sort Order', '排序', lang)}
+                  >
+                    {Array.from({ length: pages.length }, (_, i) => i + 1).map(n => (
+                      <option key={n} value={n}>{n}</option>
+                    ))}
+                  </select>
                   <button
                     onClick={async () => {
                       await handleTogglePublish(page.id, page.is_published);
@@ -4492,24 +5497,21 @@ const ContentPagesManager = forwardRef<ContentPagesManagerRef, { type: string; t
       {!isFullPage && showForm && (
         <div className="fixed inset-0 z-50 flex items-start justify-center bg-black/60 backdrop-blur-sm overflow-y-auto py-8">
           <div className="bg-card rounded-2xl border border-border p-6 w-full max-w-3xl shadow-2xl relative">
-            <button onClick={() => setShowForm(false)} className="absolute top-3 right-3 p-1 rounded-md hover:bg-secondary transition-colors text-muted-foreground hover:text-foreground"><X className="w-5 h-5" /></button>
+            <button onClick={handleCloseEditor} className="absolute top-3 right-3 p-1 rounded-md hover:bg-secondary transition-colors text-muted-foreground hover:text-foreground"><X className="w-5 h-5" /></button>
             <h3 className="text-lg font-bold mb-4">{editingPage ? t('Edit Page', '编辑页面', lang) : t('Add Page', '添加页面', lang)}</h3>
 
             <div className="space-y-4">
-              <div className="grid grid-cols-2 gap-4">
-                <div>
-                  <label className="block text-sm font-medium mb-1">Slug</label>
-                  <input value={formSlug} onChange={e => { markChanged(); setFormSlug(e.target.value); }} className="w-full rounded-lg border border-border bg-background px-3 py-2 text-sm" placeholder="e.g. best-pod-system-2025" />
-                </div>
-                <div>
-                  <label className="block text-sm font-medium mb-1">{t('Sort Order', '排序', lang)}</label>
-                  <input type="number" value={formSortOrder} onChange={e => { markChanged(); setFormSortOrder(parseInt(e.target.value) || 0); }} className="w-full rounded-lg border border-border bg-background px-3 py-2 text-sm" />
+              <div>
+                <label className="block text-sm font-medium mb-1">Slug</label>
+                <div className="flex gap-2">
+                  <input value={formSlug} onChange={e => { markChanged(); setFormSlug(e.target.value); }} className="flex-1 rounded-lg border border-border bg-background px-3 py-2 text-sm" placeholder="e.g. best-pod-system-2025" />
+                  <button type="button" onClick={() => { markChanged(); setFormSlug(prev => prev.replace(/\s+/g, '-')); }} className="rounded-lg border border-border bg-secondary px-3 py-2 text-sm font-medium hover:bg-accent whitespace-nowrap">Replace spaces</button>
                 </div>
               </div>
 
               <div>
                 <label className="block text-sm font-medium mb-1">{t('Cover Image', '封面图', lang)}</label>
-                <ImageUpload value={formCoverImage} onChange={setFormCoverImage} aspectRatio={16 / 9} recommendedSize="480x270px" label={t('Cover', '封面', lang)} folder="content" lang={lang} />
+                <ImageUpload value={formCoverImage} onChange={setFormCoverImage} aspectRatio={16 / 9} recommendedSize="480x270px" label={t('Cover', '封面', lang)} folder="content" lang={lang} customFileName={editingPage ? `${editingPage}/cover.jpg` : undefined} />
               </div>
 
               {/* Language toggle + unified editor */}
@@ -4539,6 +5541,7 @@ const ContentPagesManager = forwardRef<ContentPagesManagerRef, { type: string; t
                       <RichTextEditor
                         ref={editorRef}
                         value={tr.content}
+                        pageId={editingPage}
                         onChange={(v: string) => { markChanged(); setFormTranslations(prev => prev.map((t, i) => i === idx ? { ...t, content: v } : t)); }}
                       />
                     </div>
@@ -4566,6 +5569,106 @@ const ContentPagesManager = forwardRef<ContentPagesManagerRef, { type: string; t
                 {saving ? t('Publishing...', '发布中...', lang) : t('Publish', '发布', lang)}
               </button>
             </div>
+          </div>
+        </div>
+      )}
+
+      {/* Global Disclaimer Settings Modal */}
+      {showDisclaimerModal && (
+        <div className="fixed inset-0 z-50 flex items-start justify-center bg-black/60 backdrop-blur-sm overflow-y-auto py-8">
+          <div className="bg-card rounded-2xl border border-border p-6 w-full max-w-2xl shadow-2xl relative">
+            <button onClick={() => setShowDisclaimerModal(false)} className="absolute top-3 right-3 p-1 rounded-md hover:bg-secondary transition-colors text-muted-foreground hover:text-foreground"><X className="w-5 h-5" /></button>
+            <h3 className="text-lg font-bold mb-4">{t('Disclaimer Settings', '声明设置', lang)}</h3>
+
+            {disclaimerLoading ? (
+              <div className="py-8 text-center text-muted-foreground">{t('Loading...', '加载中...', lang)}</div>
+            ) : (
+              <div className="space-y-4">
+                {/* Language toggle */}
+                <div className="flex items-center gap-2">
+                  {activeLanguages.map((l) => (
+                    <button
+                      key={l.code}
+                      type="button"
+                      onClick={() => setDisclaimerLang(l.code)}
+                      className={`rounded-lg px-3 py-1.5 text-sm font-medium transition-colors ${disclaimerLang === l.code ? 'bg-purple-700 text-white' : 'border border-border text-muted-foreground hover:text-foreground'}`}
+                    >{l.name}</button>
+                  ))}
+                </div>
+
+                {disclaimerTranslations.map((tr, idx) => tr.language === disclaimerLang ? (
+                  <div key={tr.language} className="space-y-4">
+                    <div>
+                      <label className="flex items-center gap-2 text-sm font-medium mb-1">
+                        <span>{t('Disclaimer', '声明', lang)}</span>
+                        <input
+                          type="checkbox"
+                          checked={tr.disclaimer_hidden}
+                          onChange={e => setDisclaimerTranslations(prev => prev.map((t, i) => i === idx ? { ...t, disclaimer_hidden: e.target.checked } : t))}
+                          className="rounded border-border"
+                        />
+                        <span className="text-xs text-muted-foreground/70">{t('Hide on frontend', '前端隐藏', lang)}</span>
+                      </label>
+                      <textarea
+                        value={tr.disclaimer}
+                        onChange={e => setDisclaimerTranslations(prev => prev.map((t, i) => i === idx ? { ...t, disclaimer: e.target.value } : t))}
+                        rows={4}
+                        className="w-full rounded-lg border border-border bg-background px-3 py-2 text-sm resize-y"
+                        placeholder={t('Disclaimer text...', '声明内容...', lang)}
+                      />
+                    </div>
+                    <div>
+                      <label className="flex items-center gap-2 text-sm font-medium mb-1">
+                        <span>{t('AI Disclosure', 'AI辅助声明', lang)}</span>
+                        <input
+                          type="checkbox"
+                          checked={tr.ai_disclosure_hidden}
+                          onChange={e => setDisclaimerTranslations(prev => prev.map((t, i) => i === idx ? { ...t, ai_disclosure_hidden: e.target.checked } : t))}
+                          className="rounded border-border"
+                        />
+                        <span className="text-xs text-muted-foreground/70">{t('Hide on frontend', '前端隐藏', lang)}</span>
+                      </label>
+                      <textarea
+                        value={tr.ai_disclosure}
+                        onChange={e => setDisclaimerTranslations(prev => prev.map((t, i) => i === idx ? { ...t, ai_disclosure: e.target.value } : t))}
+                        rows={4}
+                        className="w-full rounded-lg border border-border bg-background px-3 py-2 text-sm resize-y"
+                        placeholder={t('AI disclosure text...', 'AI辅助声明内容...', lang)}
+                      />
+                    </div>
+                  </div>
+                ) : null)}
+
+                <div className="flex items-center justify-between pt-2">
+                  <div className="flex items-center gap-3">
+                    {disclaimerSavedMsg && (
+                      <span className="text-xs text-purple-400 font-medium">{disclaimerSavedMsg}</span>
+                    )}
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <button
+                      type="button"
+                      onClick={() => setShowDisclaimerModal(false)}
+                      className="rounded-lg border border-border px-4 py-2 text-sm font-medium hover:bg-secondary transition-colors"
+                    >
+                      {t('Close', '关闭', lang)}
+                    </button>
+                    <button
+                      type="button"
+                      onClick={saveDisclaimer}
+                      disabled={disclaimerSaving}
+                      className={`rounded-lg px-4 py-2 text-sm font-semibold transition-colors ${
+                        disclaimerSaving
+                          ? 'bg-purple-600/50 text-white cursor-default'
+                          : 'bg-purple-600 text-white hover:bg-purple-700'
+                      }`}
+                    >
+                      {disclaimerSaving ? t('Saving...', '保存中...', lang) : t('Save', '保存', lang)}
+                    </button>
+                  </div>
+                </div>
+              </div>
+            )}
           </div>
         </div>
       )}
@@ -4915,7 +6018,7 @@ function PromotionFormModal({ promotion, products, promotionProducts, onSave, la
       </button>
       {open && (
         <div className="fixed inset-0 z-50 flex items-center justify-center">
-          <div className="absolute inset-0 bg-black/70" onClick={() => setOpen(false)} />
+          <div className="absolute inset-0 bg-black/70" />
           <div className="relative w-full max-w-3xl max-h-[90vh] bg-card rounded-xl border border-border shadow-xl overflow-hidden flex flex-col">
             {/* Header - Fixed */}
             <div className="flex items-center justify-between p-4 border-b border-border shrink-0">
@@ -5109,7 +6212,7 @@ function CategoryFormModal({ category, onSave, lang, activeLanguages }: { catego
       </button>
       {open && (
         <div className="fixed inset-0 z-50 flex items-center justify-center">
-          <div className="absolute inset-0 bg-black/70" onClick={() => setOpen(false)} />
+          <div className="absolute inset-0 bg-black/70" />
           <div className="relative w-full max-w-lg max-h-[90vh] bg-card rounded-xl border border-border shadow-xl overflow-hidden flex flex-col">
             {/* Header - Fixed */}
             <div className="flex items-center justify-between p-4 border-b border-border shrink-0">
@@ -5408,7 +6511,7 @@ function StoreFormModal({ store, onSave, lang, defaultType, activeLanguages, all
       </button>
       {open && (
         <div className="fixed inset-0 z-50 flex items-center justify-center">
-          <div className="absolute inset-0 bg-black/70 backdrop-blur-sm" onClick={() => setOpen(false)} />
+          <div className="absolute inset-0 bg-black/70 backdrop-blur-sm" />
           <div className="relative w-full max-w-lg max-h-[90vh] bg-card rounded-xl border border-border shadow-xl overflow-hidden flex flex-col">
             {/* Header - Fixed */}
             <div className="flex items-center justify-between p-4 border-b border-border shrink-0">
@@ -5962,7 +7065,7 @@ function PromotionProductFormModal({ promotionProduct, categories, stores, promo
 
       {open && (
         <div className="fixed inset-0 z-50 flex items-center justify-center">
-          <div className="absolute inset-0 bg-black/70" onClick={() => setOpen(false)} />
+          <div className="absolute inset-0 bg-black/70" />
           <div className="relative w-full max-w-4xl max-h-[90vh] bg-card rounded-xl border border-border shadow-xl overflow-hidden flex flex-col">
             {/* Header - Fixed */}
             <div className="flex items-center justify-between p-4 border-b border-border shrink-0">
@@ -6012,12 +7115,12 @@ function PromotionProductFormModal({ promotionProduct, categories, stores, promo
 
               {/* Product Image Upload (homeImageKey - primary card image) */}
               <div>
-                <label className="text-xs text-muted-foreground text-left block">{translate('Product Image', '产品图片', lang)} (260x260px)</label>
+                <label className="text-xs text-muted-foreground text-left block">{translate('Product Image', '产品图片', lang)} (480x480px)</label>
                 <ImageUpload
                   value={homeImageKey}
                   onUploadComplete={(key) => setHomeImageKey(key)}
                   aspectRatio={1}
-                  suggestedSize="260x260px"
+                  suggestedSize="480x480px"
                   folder="products"
                   entityId={promotionProduct?.id ? `promo-home-${promotionProduct.id}` : undefined}
                 />
@@ -6759,7 +7862,7 @@ function ProductFormModal({ product, categories, stores, promotions, onSave, lan
         }))
       : activeLanguages.map(l => ({ language: l.code, name: '', description: '', features: '', specs: '' }))
   );
-  const [prices, setPrices] = useState<{ store_id: string; current_price: string; original_price: string; product_url: string; discount_percent: string; currency: string; region: string; no_quote: boolean; store_type: string; promotion_id: string; time_type: 'permanent' | 'time_range' | 'countdown'; start_time: string; end_time: string; countdown_action: 'convert_to_standard' | 'hide'; standard_price: string; countdown_days: number; countdown_hours: number; countdown_minutes: number; countdown_seconds: number }[]>(
+  const [prices, setPrices] = useState<{ store_id: string; current_price: string; original_price: string; product_url: string; discount_percent: string; currency: string; region: string; no_quote: boolean; out_of_stock: boolean; store_type: string; promotion_id: string; time_type: 'permanent' | 'time_range' | 'countdown'; start_time: string; end_time: string; countdown_action: 'convert_to_standard' | 'hide'; promo_price: string; countdown_days: number; countdown_hours: number; countdown_minutes: number; countdown_seconds: number; __endAt?: number }[]>(
     product?.product_prices?.map((p) => {
       const store = stores.find((s) => s.id.toString() === p.store_id.toString());
       return {
@@ -6780,13 +7883,70 @@ function ProductFormModal({ product, categories, stores, promotions, onSave, lan
         countdown_days: 0,
         countdown_hours: 0,
         countdown_minutes: 0,
-        standard_price: '',
+        promo_price: '',
         countdown_seconds: 0,
       };
-    }) || [{ store_id: '', current_price: '', original_price: '', product_url: '', discount_percent: '', currency: '$', region: '', no_quote: false, store_type: 'standard', promotion_id: '', time_type: 'permanent' as const, start_time: '', end_time: '', countdown_action: 'convert_to_standard' as const, standard_price: '', countdown_days: 0, countdown_hours: 0, countdown_minutes: 0, countdown_seconds: 0 }]
+    }) || [{ store_id: '', current_price: '', original_price: '', product_url: '', discount_percent: '', currency: '$', region: '', no_quote: false, out_of_stock: false, store_type: 'standard', promotion_id: '', time_type: 'permanent' as const, start_time: '', end_time: '', countdown_action: 'convert_to_standard' as const, promo_price: '', countdown_days: 0, countdown_hours: 0, countdown_minutes: 0, countdown_seconds: 0 }]
   );
   const [saving, setSaving] = useState(false);
+  const [extraPromotions, setExtraPromotions] = useState<Promotion[]>([]);
   const isEdit = !!product;
+
+  // 倒计时实时刷新：弹窗打开时每秒按剩余时间更新天/时/分，结束后显示 0；正在编辑的组暂时冻结
+  const editingCountdownRef = useRef<number | null>(null);
+  useEffect(() => {
+    if (!open) return;
+    const timer = setInterval(() => {
+      setPrices(prev => prev.map((p) => {
+        if (p.store_type !== 'promotion' || p.time_type !== 'countdown' || p.__endAt == null) return p;
+        if (editingCountdownRef.current != null && p.__endAt === editingCountdownRef.current) return p;
+        const diffMs = p.__endAt - Date.now();
+        if (diffMs <= 0) {
+          if (p.countdown_days === 0 && p.countdown_hours === 0 && p.countdown_minutes === 0) return p;
+          return { ...p, countdown_days: 0, countdown_hours: 0, countdown_minutes: 0, countdown_seconds: 0 };
+        }
+        // 最小显示单位为分钟：剩余时间向上补齐到整分钟再拆分，
+        // 避免输入13小时后下一秒因 floor 退位显示12（12:59:59 应显示为13时）
+        const remainMin = Math.ceil(diffMs / 60000);
+        const days = Math.floor(remainMin / 1440);
+        const hours = Math.floor((remainMin % 1440) / 60);
+        const minutes = remainMin % 60;
+        if (days === p.countdown_days && hours === p.countdown_hours && minutes === p.countdown_minutes) return p;
+        return { ...p, countdown_days: days, countdown_hours: hours, countdown_minutes: minutes };
+      }));
+    }, 1000);
+    return () => clearInterval(timer);
+  }, [open]);
+
+  // Fetch promotions linked to this product that may be inactive or outside current page
+  useEffect(() => {
+    if (!open || !product) return;
+    const linkedIds = new Set<number>();
+    ((product.promotion_prices as Array<Record<string, unknown>>) || []).forEach((p) => {
+      const pid = p.promotion_id as number;
+      if (pid) linkedIds.add(pid);
+    });
+    if (linkedIds.size === 0) { setExtraPromotions([]); return; }
+    const knownIds = new Set((promotions || []).map(p => p.id));
+    const missingIds = Array.from(linkedIds).filter(id => !knownIds.has(id));
+    if (missingIds.length === 0) { setExtraPromotions([]); return; }
+    let cancelled = false;
+    adminFetch(`/api/admin/promotions?ids=${missingIds.join(',')}`)
+      .then(r => r.json())
+      .then(json => {
+        if (!cancelled && json.success) setExtraPromotions(json.data?.promotions || []);
+      })
+      .catch(() => {});
+    return () => { cancelled = true; };
+  }, [open, product?.id, promotions]);
+
+  // Build merged promotion list for dropdown (current page + linked promotions)
+  const allPromotions = useMemo(() => {
+    const map = new Map<number, Promotion>();
+    (promotions || []).forEach(p => map.set(p.id, p));
+    extraPromotions.forEach(p => { if (!map.has(p.id)) map.set(p.id, p); });
+    return Array.from(map.values());
+  }, [promotions, extraPromotions]);
 
   // Sync ALL form fields when opening modal to ensure fresh data from prop
   useEffect(() => {
@@ -6852,13 +8012,14 @@ function ProductFormModal({ product, categories, stores, promotions, onSave, lan
           currency: p.currency || '$',
           region: p.region || '',
           no_quote: p.no_quote || false,
+          out_of_stock: p.out_of_stock || false,
           store_type: store?.store_type || 'standard',
           promotion_id: '',
           time_type: 'permanent' as const,
           start_time: '',
           end_time: '',
           countdown_action: 'convert_to_standard' as const,
-          standard_price: '',
+          promo_price: '',
           countdown_days: 0,
           countdown_hours: 0,
           countdown_minutes: 0,
@@ -6868,6 +8029,21 @@ function ProductFormModal({ product, categories, stores, promotions, onSave, lan
       // Load existing promotion prices
       const promoPricesList = ((product.promotion_prices as Array<Record<string, unknown>> | undefined) || []).map((p) => {
         const store = stores.find((s) => s.id.toString() === (p.store_id as number)?.toString());
+        // 倒计时按"剩余时间"反算（now -> end_time），记录结束时刻供弹窗内实时刷新
+        let countdown_days = 0, countdown_hours = 0, countdown_minutes = 0, countdown_seconds = 0;
+        let __endAt: number | undefined;
+        if ((p.time_type as string) === 'countdown' && p.end_time) {
+          const endTs = new Date(p.end_time as string).getTime();
+          __endAt = endTs;
+          const diff = endTs - Date.now();
+          if (diff > 0) {
+            // 与弹窗内每秒刷新同一套规则：向上补齐到整分钟
+            const remainMin = Math.ceil(diff / 60000);
+            countdown_days = Math.floor(remainMin / 1440);
+            countdown_hours = Math.floor((remainMin % 1440) / 60);
+            countdown_minutes = remainMin % 60;
+          }
+        }
         return {
           store_id: (p.store_id as number)?.toString() || '',
           current_price: (p.current_price as string) || '',
@@ -6877,23 +8053,25 @@ function ProductFormModal({ product, categories, stores, promotions, onSave, lan
           currency: (p.currency as string) || '$',
           region: (p.region as string) || '',
           no_quote: (p.no_quote as boolean) || false,
+          out_of_stock: (p.out_of_stock as boolean) || false,
           store_type: 'promotion',
           promotion_id: (p.promotion_id as number)?.toString() || '',
           time_type: (p.time_type as 'permanent' | 'time_range' | 'countdown') || 'permanent',
           start_time: (p.start_time as string) || '',
           end_time: (p.end_time as string) || '',
           countdown_action: ((p.countdown_action as 'convert_to_standard' | 'hide') || 'convert_to_standard'),
-          standard_price: (p.standard_price as string) || '',
-          countdown_days: 0,
-          countdown_hours: 0,
-          countdown_minutes: 0,
-          countdown_seconds: 0,
+          promo_price: (p.promo_price as string) || '',
+          countdown_days,
+          countdown_hours,
+          countdown_minutes,
+          countdown_seconds,
+          __endAt,
         };
       });
       setPrices(
         [...standardPricesList, ...promoPricesList].length > 0
           ? [...standardPricesList, ...promoPricesList]
-          : [{ store_id: '', current_price: '', original_price: '', product_url: '', discount_percent: '', currency: '$', region: '', no_quote: false, store_type: 'standard', promotion_id: '', time_type: 'permanent' as const, start_time: '', end_time: '', countdown_action: 'convert_to_standard' as const, standard_price: '', countdown_days: 0, countdown_hours: 0, countdown_minutes: 0, countdown_seconds: 0 }]
+          : [{ store_id: '', current_price: '', original_price: '', product_url: '', discount_percent: '', currency: '$', region: '', no_quote: false, out_of_stock: false, store_type: 'standard', promotion_id: '', time_type: 'permanent' as const, start_time: '', end_time: '', countdown_action: 'convert_to_standard' as const, promo_price: '', countdown_days: 0, countdown_hours: 0, countdown_minutes: 0, countdown_seconds: 0 }]
       );
     } else if (open && !product) {
       // Reset all fields for "Add New Product" mode
@@ -6906,18 +8084,27 @@ function ProductFormModal({ product, categories, stores, promotions, onSave, lan
       setIsFeatured(false);
       setNotes('');
       setTranslations(activeLanguages.map(l => ({ language: l.code, name: '', description: '', features: '', specs: '' })));
-      setPrices([{ store_id: '', current_price: '', original_price: '', product_url: '', discount_percent: '', currency: '$', region: '', no_quote: false, store_type: 'standard', promotion_id: '', time_type: 'permanent' as const, start_time: '', end_time: '', countdown_action: 'convert_to_standard' as const, standard_price: '', countdown_days: 0, countdown_hours: 0, countdown_minutes: 0, countdown_seconds: 0 }]);
+      setPrices([{ store_id: '', current_price: '', original_price: '', product_url: '', discount_percent: '', currency: '$', region: '', no_quote: false, out_of_stock: false, store_type: 'standard', promotion_id: '', time_type: 'permanent' as const, start_time: '', end_time: '', countdown_action: 'convert_to_standard' as const, promo_price: '', countdown_days: 0, countdown_hours: 0, countdown_minutes: 0, countdown_seconds: 0 }]);
     }
   }, [open, product?.id, product?.updated_at, activeLanguages, stores]);
 
   const handleSave = async () => {
+    // Validate countdown: at least one value > 0
+    for (const p of prices) {
+      if (p.store_type === 'promotion' && p.time_type === 'countdown') {
+        const total = (p.countdown_days || 0) + (p.countdown_hours || 0) + (p.countdown_minutes || 0);
+        if (total <= 0) {
+          alert(t('Countdown duration must be greater than 0', '倒计时时长必须大于0', lang));
+          setSaving(false);
+          return;
+        }
+      }
+    }
     setSaving(true);
     try {
-      // Separate standard and promotion prices
-      // store_type from stores table can be 'store'/'official'/'standard'/'promotion';
-      // use promotion_id to distinguish: if promotion_id is set → promotion, else → standard
-      const standardPrices = prices.filter(p => p.store_id && p.current_price && p.product_url && !p.promotion_id);
-      const promotionPrices = prices.filter(p => p.store_id && p.current_price && p.product_url && p.promotion_id);
+      // Separate standard and promotion prices by store_type
+      const standardPrices = prices.filter(p => p.store_id && p.current_price && p.product_url && p.store_type !== 'promotion');
+      const promotionPrices = prices.filter(p => p.store_id && p.current_price && p.product_url && p.store_type === 'promotion');
 
       const url = '/api/admin/products';
       const method = isEdit ? 'PUT' : 'POST';
@@ -6955,11 +8142,17 @@ function ProductFormModal({ product, categories, stores, promotions, onSave, lan
           // Compute start_time and end_time from countdown if applicable
           let startTime = p.start_time || null;
           let endTime = p.end_time || null;
-          if (p.time_type === 'countdown' && (p.countdown_days || p.countdown_hours || p.countdown_minutes || p.countdown_seconds)) {
+          if (p.time_type === 'countdown' && (p.countdown_days || p.countdown_hours || p.countdown_minutes)) {
             const now = new Date();
-            startTime = now.toISOString();
-            const totalMs = (p.countdown_days * 86400000) + (p.countdown_hours * 3600000) + (p.countdown_minutes * 60000) + (p.countdown_seconds * 1000);
-            endTime = new Date(now.getTime() + totalMs).toISOString();
+            const totalMs = (p.countdown_days * 86400000) + (p.countdown_hours * 3600000) + (p.countdown_minutes * 60000);
+            if (p.__endAt != null) {
+              // 未改动：保持原开始/结束时间；手动改过：__endAt 已在改动时刻按新时长重算
+              startTime = p.start_time ? new Date(p.start_time).toISOString() : now.toISOString();
+              endTime = new Date(p.__endAt).toISOString();
+            } else {
+              startTime = now.toISOString();
+              endTime = new Date(now.getTime() + totalMs).toISOString();
+            }
           }
           return {
             store_id: parseInt(p.store_id),
@@ -6975,7 +8168,7 @@ function ProductFormModal({ product, categories, stores, promotions, onSave, lan
             start_time: startTime,
             end_time: endTime,
             countdown_action: p.countdown_action,
-            standard_price: p.standard_price || null,
+            promo_price: p.promo_price || null,
           };
         }),
       };
@@ -6994,7 +8187,7 @@ function ProductFormModal({ product, categories, stores, promotions, onSave, lan
       </button>
       {open && (
         <div className="fixed inset-0 z-50 flex items-center justify-center">
-          <div className="absolute inset-0 bg-black/70 backdrop-blur-sm" onClick={() => setOpen(false)} />
+          <div className="absolute inset-0 bg-black/70 backdrop-blur-sm" />
           <div className="relative w-full max-w-2xl max-h-[90vh] bg-card rounded-xl border border-border shadow-xl overflow-hidden flex flex-col">
             {/* Header - Fixed */}
             <div className="flex items-center justify-between p-4 border-b border-border shrink-0">
@@ -7008,7 +8201,10 @@ function ProductFormModal({ product, categories, stores, promotions, onSave, lan
               <div className="grid grid-cols-2 gap-3">
                 <div>
                   <label className="text-xs text-muted-foreground text-left block">{t('Slug', '标识', lang)}</label>
-                  <input value={slug} onChange={(e) => setSlug(e.target.value)} className="mt-1 w-full rounded-lg border border-border bg-secondary px-3 py-2 text-sm" />
+                  <div className="mt-1 flex gap-2">
+                    <input value={slug} onChange={(e) => setSlug(e.target.value)} className="flex-1 rounded-lg border border-border bg-secondary px-3 py-2 text-sm" />
+                    <button type="button" onClick={() => setSlug(prev => prev.replace(/\s+/g, '-'))} className="rounded-lg border border-border bg-background px-3 py-2 text-sm font-medium hover:bg-accent whitespace-nowrap">Replace spaces</button>
+                  </div>
                 </div>
                 <div>
                   <label className="text-xs text-muted-foreground text-left block">{t('Category', '分类', lang)}</label>
@@ -7028,10 +8224,11 @@ function ProductFormModal({ product, categories, stores, promotions, onSave, lan
                   setHomeImageKey(key);
                 }}
                 aspectRatio={1}
-                suggestedSize="260x260px"
+                suggestedSize="480x480px"
                 label={t('Product Image', '产品图片', lang)}
                 folder="products"
-                entityId={product?.id ? `home-${product.id}` : undefined}
+                slug={slug || undefined}
+                imageType="product-image"
               />
 
               {/* Detail Page Image Upload (imageKey - detail/fallback image) */}
@@ -7060,7 +8257,8 @@ function ProductFormModal({ product, categories, stores, promotions, onSave, lan
                 label={t('Detail Page Image', '详情页图片', lang)}
                 folder="products"
                 isProductImage={true}
-                entityId={product?.id ? `main-${product.id}` : undefined}
+                slug={slug || undefined}
+                imageType="detail-page"
               />
 
               <div className="flex gap-4">
@@ -7134,14 +8332,15 @@ function ProductFormModal({ product, categories, stores, promotions, onSave, lan
               <div className="border-t border-border pt-3">
                 <h3 className="text-sm font-semibold mb-2 text-left">{t('Store Prices', '商城价格', lang)}</h3>
                 {(() => {
-                  // Group prices by store_id + promotion_id (separate standard and promotion)
+                  // Group by store_id + store_type + promotion_id (standard and promotion stay separate)
                   const storeGroups: Array<{ storeId: string; promotionId: string; indices: number[] }> = [];
                   prices.forEach((p, idx) => {
-                    const gid = (p.store_id || '__empty__' + idx) + '_' + (p.promotion_id || 'none');
+                    const sid = p.store_id || '__empty__' + idx;
                     const pid = p.promotion_id || 'none';
-                    let group = storeGroups.find(g => g.storeId === (p.store_id || '__empty__' + idx) && g.promotionId === pid);
+                    const stype = p.store_type || 'standard';
+                    let group = storeGroups.find(g => g.storeId === sid && g.promotionId === pid && (g as any).storeType === stype);
                     if (!group) {
-                      group = { storeId: p.store_id || '__empty__' + idx, promotionId: pid, indices: [] };
+                      group = { storeId: sid, promotionId: pid, indices: [], storeType: stype } as any;
                       storeGroups.push(group);
                     }
                     group.indices.push(idx);
@@ -7153,12 +8352,29 @@ function ProductFormModal({ product, categories, stores, promotions, onSave, lan
                     const storeRegions: Array<{region: string; currency: string}> = Array.isArray(selectedStore?.regions) && selectedStore.regions.length > 0 ? selectedStore.regions : [];
                     const hasMultipleCurrencies = storeRegions.length > 1;
                     return (
-                      <div key={group.storeId} className={`mb-3 p-3 rounded-lg border ${firstP.store_type === 'promotion' ? 'border-purple-500/30 bg-purple-500/5' : 'border-border bg-secondary/30'}`}>
+                      <div key={`${group.storeId}_${firstP.store_type}_${group.promotionId}`} className={`mb-3 p-3 rounded-lg border ${firstP.store_type === 'promotion' ? 'border-purple-500/30 bg-purple-500/5' : 'border-border bg-secondary/30'}`}>
                         <div className="flex items-center justify-between mb-2">
                           <label className="text-[10px] text-muted-foreground text-left block">{t('Store', '商城', lang)}</label>
-                          <span className={`text-[10px] px-1.5 py-0.5 rounded font-medium ${firstP.store_type === 'promotion' ? 'bg-purple-600/20 text-purple-400' : 'bg-cyan-600/20 text-cyan-400'}`}>
-                            {firstP.store_type === 'promotion' ? t('Promotion Store', '特惠商城', lang) : t('Standard Store', '标准商城', lang)}
-                          </span>
+                          <div className="flex items-center gap-3">
+                            {!hasMultipleCurrencies && (
+                              <label className="flex items-center gap-1 cursor-pointer">
+                                <input
+                                  type="checkbox"
+                                  checked={firstP.out_of_stock || false}
+                                  onChange={(e) => {
+                                    const newP = [...prices];
+                                    for (const idx of group.indices) { newP[idx].out_of_stock = e.target.checked; }
+                                    setPrices(newP);
+                                  }}
+                                  className="h-3.5 w-3.5 rounded border-border"
+                                />
+                                <span className="text-[10px] text-muted-foreground">{t('Out of Stock', '缺货', lang)}</span>
+                              </label>
+                            )}
+                            <span className={`text-[10px] px-1.5 py-0.5 rounded font-medium ${firstP.store_type === 'promotion' ? 'bg-purple-600/20 text-purple-400' : 'bg-cyan-600/20 text-cyan-400'}`}>
+                              {firstP.store_type === 'promotion' ? t('Promotion Store', '特惠商城', lang) : t('Standard Store', '标准商城', lang)}
+                            </span>
+                          </div>
                         </div>
                         <StoreSelect
                           stores={stores}
@@ -7193,7 +8409,7 @@ function ProductFormModal({ product, categories, stores, promotions, onSave, lan
                                 no_quote: existing?.no_quote || false,
                                 store_type: firstP.store_type,
                                 promotion_id: firstP.promotion_id,
-                                standard_price: existing?.standard_price || '',
+                                promo_price: existing?.promo_price || '',
                                 time_type: 'permanent' as const,
                                 start_time: '',
                                 end_time: '',
@@ -7217,7 +8433,7 @@ function ProductFormModal({ product, categories, stores, promotions, onSave, lan
                                   no_quote: existing?.no_quote || false,
                                   store_type: firstP.store_type,
                                   promotion_id: firstP.promotion_id,
-                                  standard_price: existing?.standard_price || '',
+                                  promo_price: existing?.promo_price || '',
                                   time_type: 'permanent' as const,
                                   start_time: '',
                                   end_time: '',
@@ -7254,10 +8470,27 @@ function ProductFormModal({ product, categories, stores, promotions, onSave, lan
                               className="mt-1 w-full rounded-lg border border-border bg-secondary px-3 py-2 text-sm"
                             >
                               <option value="">{t('-- Select a promotion --', '-- 选择活动 --', lang)}</option>
-                              {(promotions || []).filter(p => p.is_active).map((p) => (
-                                <option key={p.id} value={p.id}>{p.promotion_translations?.find((tr) => tr.language === lang)?.name || p.slug}</option>
-                              ))}
+                              {allPromotions.map((p) => {
+                                const promoName = p.promotion_translations?.find((tr) => tr.language === lang)?.name || p.slug;
+                                return (
+                                  <option key={p.id} value={p.id}>
+                                    {promoName}{!p.is_active ? ` (${t('Inactive', '已停用', lang)})` : ''}
+                                  </option>
+                                );
+                              })}
                             </select>
+                          </div>
+                        )}
+                        {/* Promo Price - always shown for promotion stores, above time settings */}
+                        {firstP.store_type === 'promotion' && (
+                          <div className="mt-2">
+                            <label className="text-[10px] text-muted-foreground text-left block mb-0.5">{t('Promo Price', '特惠价', lang)} ({firstP.currency || '$'})</label>
+                            <input
+                              value={firstP.promo_price || ''}
+                              onChange={(e) => { const newP = [...prices]; for (const idx of group.indices) { newP[idx].promo_price = e.target.value; } setPrices(newP); }}
+                              className="w-full rounded-lg border border-purple-500/30 bg-purple-500/5 px-3 py-2 text-sm"
+                              placeholder="0.00"
+                            />
                           </div>
                         )}
                         {/* Time Settings for Promotion Store */}
@@ -7266,7 +8499,7 @@ function ProductFormModal({ product, categories, stores, promotions, onSave, lan
                             <label className="text-[10px] text-muted-foreground text-left block mb-1">{t('Time Settings', '时间设置', lang)}</label>
                             <div className="flex gap-1 mb-2">
                               {(['permanent', 'time_range', 'countdown'] as const).map((tt) => (
-                                <button key={tt} onClick={() => { const newP = [...prices]; for (const idx of group.indices) { newP[idx].time_type = tt; } setPrices(newP); }}
+                                <button key={tt} onClick={() => { const newP = [...prices]; const switchNow = Date.now(); for (const idx of group.indices) { newP[idx].time_type = tt; if (tt === 'time_range') { newP[idx].countdown_days = 0; newP[idx].countdown_hours = 0; newP[idx].countdown_minutes = 0; newP[idx].countdown_seconds = 0; newP[idx].__endAt = undefined; } if (tt === 'countdown') { newP[idx].start_time = ''; newP[idx].end_time = ''; newP[idx].__endAt = switchNow; } if (tt === 'permanent') { newP[idx].start_time = ''; newP[idx].end_time = ''; newP[idx].countdown_days = 0; newP[idx].countdown_hours = 0; newP[idx].countdown_minutes = 0; newP[idx].countdown_seconds = 0; newP[idx].__endAt = undefined; } } setPrices(newP); }}
                                   className={`px-2 py-1 rounded text-[10px] font-medium transition-colors ${firstP.time_type === tt ? 'bg-purple-600 text-white' : 'bg-secondary text-muted-foreground hover:text-foreground'}`}>
                                   {tt === 'permanent' ? t('Permanent', '永久', lang) : tt === 'time_range' ? t('Time Range', '时间段', lang) : t('Countdown', '倒计时', lang)}
                                 </button>
@@ -7295,13 +8528,27 @@ function ProductFormModal({ product, categories, stores, promotions, onSave, lan
                                     { key: 'countdown_days', label: t('Days', '天', lang) },
                                     { key: 'countdown_hours', label: t('Hours', '时', lang) },
                                     { key: 'countdown_minutes', label: t('Min', '分', lang) },
-                                    { key: 'countdown_seconds', label: t('Sec', '秒', lang) },
                                   ].map(({ key, label }) => (
                                     <div key={key} className="flex-1">
                                       <label className="text-[10px] text-muted-foreground block">{label}</label>
-                                      <input type="number" min={0} max={key === 'countdown_hours' ? 23 : key === 'countdown_minutes' || key === 'countdown_seconds' ? 59 : 365}
+                                      <input type="number" min={0} max={key === 'countdown_hours' ? 23 : key === 'countdown_minutes' ? 59 : 365}
                                         value={(firstP as Record<string, unknown>)[key] as number || 0}
-                                        onChange={(e) => { const newP = [...prices]; for (const idx of group.indices) { (newP[idx] as Record<string, unknown>)[key] = parseInt(e.target.value) || 0; } setPrices(newP); }}
+                                        onFocus={() => { editingCountdownRef.current = firstP.__endAt ?? null; }}
+                                        onBlur={() => { editingCountdownRef.current = null; }}
+                                        onChange={(e) => {
+                                          const newP = [...prices];
+                                          for (const idx of group.indices) {
+                                            (newP[idx] as Record<string, unknown>)[key] = parseInt(e.target.value) || 0;
+                                            newP[idx].countdown_seconds = 0;
+                                          }
+                                          // 改动后以改动时刻按新时长重新起算
+                                          const fp = newP[group.indices[0]];
+                                          const totalMs = (fp.countdown_days * 86400000) + (fp.countdown_hours * 3600000) + (fp.countdown_minutes * 60000);
+                                          const newEnd = Date.now() + totalMs;
+                                          for (const idx of group.indices) { newP[idx] = { ...newP[idx], __endAt: newEnd }; }
+                                          editingCountdownRef.current = newEnd;
+                                          setPrices(newP);
+                                        }}
                                         className="mt-0.5 w-full rounded-lg border border-border bg-secondary px-2 py-1 text-xs" />
                                     </div>
                                   ))}
@@ -7313,17 +8560,7 @@ function ProductFormModal({ product, categories, stores, promotions, onSave, lan
                                   <option value="convert_to_standard">{t('Auto convert to Standard Store', '自动转为标准商城', lang)}</option>
                                   <option value="hide">{t('Auto hide from Promotion', '自动下架特惠信息', lang)}</option>
                                 </select>
-                                {firstP.countdown_action === 'convert_to_standard' && (
-                                  <div className="mt-2">
-                                    <label className="text-[10px] text-muted-foreground block mb-0.5">{t('Standard Price After Expiry', '转为标准价', lang)} ({firstP.currency || '$'})</label>
-                                    <input
-                                      value={firstP.standard_price}
-                                      onChange={(e) => { const newP = [...prices]; for (const idx of group.indices) { newP[idx].standard_price = e.target.value; } setPrices(newP); }}
-                                      className="w-full rounded-lg border border-purple-500/30 bg-purple-500/5 px-2 py-1 text-xs"
-                                      placeholder={t('Leave empty to use promo price', '留空则用促销价', lang)}
-                                    />
-                                  </div>
-                                )}
+
                               </div>
                             )}
                             {firstP.time_type === 'time_range' && (
@@ -7335,17 +8572,7 @@ function ProductFormModal({ product, categories, stores, promotions, onSave, lan
                                   <option value="convert_to_standard">{t('Auto convert to Standard Store', '自动转为标准商城', lang)}</option>
                                   <option value="hide">{t('Auto hide from Promotion', '自动下架特惠信息', lang)}</option>
                                 </select>
-                                {firstP.countdown_action === 'convert_to_standard' && (
-                                  <div className="mt-2">
-                                    <label className="text-[10px] text-muted-foreground block mb-0.5">{t('Standard Price After Expiry', '转为标准价', lang)} ({firstP.currency || '$'})</label>
-                                    <input
-                                      value={firstP.standard_price}
-                                      onChange={(e) => { const newP = [...prices]; for (const idx of group.indices) { newP[idx].standard_price = e.target.value; } setPrices(newP); }}
-                                      className="w-full rounded-lg border border-purple-500/30 bg-purple-500/5 px-2 py-1 text-xs"
-                                      placeholder={t('Leave empty to use promo price', '留空则用促销价', lang)}
-                                    />
-                                  </div>
-                                )}
+
                               </div>
                             )}
                           </div>
@@ -7355,28 +8582,44 @@ function ProductFormModal({ product, categories, stores, promotions, onSave, lan
                             {group.indices.map((pIdx) => {
                               const p = prices[pIdx];
                               const currencyLabel = p.currency || '$';
+                              const currencyCode = CURRENCY_OPTIONS.find(c => c.symbol === currencyLabel)?.code || currencyLabel;
                               return (
                                 <div key={pIdx} className="rounded-md border border-border/50 bg-card p-2">
                                   <div className="flex items-center justify-between mb-1.5">
-                                    <div className="text-xs font-medium text-primary text-left">{p.region || t('Default', '默认', lang)} ({currencyLabel})</div>
-                                    <label className="flex items-center gap-1 cursor-pointer">
-                                      <input
-                                        type="checkbox"
-                                        checked={p.no_quote || false}
-                                        onChange={(e) => {
-                                          const newP = [...prices];
-                                          newP[pIdx].no_quote = e.target.checked;
-                                          if (e.target.checked) {
-                                            newP[pIdx].current_price = '';
-                                            newP[pIdx].original_price = '';
-                                            newP[pIdx].discount_percent = '';
-                                          }
-                                          setPrices(newP);
-                                        }}
-                                        className="h-3.5 w-3.5 rounded border-border"
-                                      />
-                                      <span className="text-[10px] text-muted-foreground">{t('No Quote', '无报价', lang)}</span>
-                                    </label>
+                                    <div className="text-xs font-medium text-primary text-left">{currencyCode} ({currencyLabel})</div>
+                                    <div className="flex items-center gap-3">
+                                      <label className="flex items-center gap-1 cursor-pointer">
+                                        <input
+                                          type="checkbox"
+                                          checked={p.out_of_stock || false}
+                                          onChange={(e) => {
+                                            const newP = [...prices];
+                                            newP[pIdx].out_of_stock = e.target.checked;
+                                            setPrices(newP);
+                                          }}
+                                          className="h-3.5 w-3.5 rounded border-border"
+                                        />
+                                        <span className="text-[10px] text-muted-foreground">{t('Out of Stock', '缺货', lang)}</span>
+                                      </label>
+                                      <label className="flex items-center gap-1 cursor-pointer">
+                                        <input
+                                          type="checkbox"
+                                          checked={p.no_quote || false}
+                                          onChange={(e) => {
+                                            const newP = [...prices];
+                                            newP[pIdx].no_quote = e.target.checked;
+                                            if (e.target.checked) {
+                                              newP[pIdx].current_price = '';
+                                              newP[pIdx].original_price = '';
+                                              newP[pIdx].discount_percent = '';
+                                            }
+                                            setPrices(newP);
+                                          }}
+                                          className="h-3.5 w-3.5 rounded border-border"
+                                        />
+                                        <span className="text-[10px] text-muted-foreground">{t('No Quote', '无报价', lang)}</span>
+                                      </label>
+                                    </div>
                                   </div>
                                   <div className="grid grid-cols-2 gap-2 mb-1.5">
                                     <div>
@@ -7482,10 +8725,10 @@ function ProductFormModal({ product, categories, stores, promotions, onSave, lan
                   });
                 })()}
                 <div className="flex gap-3">
-                  <button onClick={() => setPrices([...prices, { store_id: '', current_price: '', original_price: '', product_url: '', discount_percent: '', currency: '$', region: '', no_quote: false, store_type: 'standard', promotion_id: '', time_type: 'permanent', start_time: '', end_time: '', countdown_action: 'convert_to_standard', standard_price: '', countdown_days: 0, countdown_hours: 0, countdown_minutes: 0, countdown_seconds: 0 }])} className="text-xs text-cyan-400 hover:underline font-medium">
+                  <button onClick={() => setPrices([...prices, { store_id: '', current_price: '', original_price: '', product_url: '', discount_percent: '', currency: '$', region: '', no_quote: false, out_of_stock: false, store_type: 'standard', promotion_id: '', time_type: 'permanent', start_time: '', end_time: '', countdown_action: 'convert_to_standard', promo_price: '', countdown_days: 0, countdown_hours: 0, countdown_minutes: 0, countdown_seconds: 0 }])} className="text-xs text-cyan-400 hover:underline font-medium">
                     + {t('Add Standard Store', '添加标准商城', lang)}
                   </button>
-                  <button onClick={() => setPrices([...prices, { store_id: '', current_price: '', original_price: '', product_url: '', discount_percent: '', currency: '$', region: '', no_quote: false, store_type: 'promotion', promotion_id: '', time_type: 'permanent', start_time: '', end_time: '', countdown_action: 'convert_to_standard', standard_price: '', countdown_days: 0, countdown_hours: 0, countdown_minutes: 0, countdown_seconds: 0 }])} className="text-xs text-purple-400 hover:underline font-medium">
+                  <button onClick={() => setPrices([...prices, { store_id: '', current_price: '', original_price: '', product_url: '', discount_percent: '', currency: '$', region: '', no_quote: false, out_of_stock: false, store_type: 'promotion', promotion_id: '', time_type: 'permanent', start_time: '', end_time: '', countdown_action: 'convert_to_standard', promo_price: '', countdown_days: 0, countdown_hours: 0, countdown_minutes: 0, countdown_seconds: 0 }])} className="text-xs text-purple-400 hover:underline font-medium">
                     + {t('Add Promotion Store', '添加特惠商城', lang)}
                   </button>
                 </div>
@@ -7511,7 +8754,6 @@ function BannerFormModal({ banner, onSave, lang, activeLanguages }: { banner?: B
   const [open, setOpen] = useState(false);
   const scrollContainerRef = useRef<HTMLDivElement>(null);
   const [linkUrl, setLinkUrl] = useState(banner?.link_url || '');
-  const [sortOrder, setSortOrder] = useState(banner?.sort_order || 0);
   const [isActive, setIsActive] = useState(banner?.is_active !== false);
   const [defaultImageKey, setDefaultImageKey] = useState(banner?.image_key || '');
   const [defaultMobileImageKey, setDefaultMobileImageKey] = useState(banner?.mobile_image_key || '');
@@ -7548,7 +8790,6 @@ function BannerFormModal({ banner, onSave, lang, activeLanguages }: { banner?: B
         image_key: defaultImageKey || null,
         mobile_image_key: defaultMobileImageKey || null,
         link_url: linkUrl || null,
-        sort_order: sortOrder,
         is_active: isActive,
         translations: translations.map((tr) => ({
           language: tr.language,
@@ -7571,7 +8812,7 @@ function BannerFormModal({ banner, onSave, lang, activeLanguages }: { banner?: B
       </button>
       {open && (
         <div className="fixed inset-0 z-50 flex items-center justify-center">
-          <div className="absolute inset-0 bg-black/70 backdrop-blur-sm" onClick={() => setOpen(false)} />
+          <div className="absolute inset-0 bg-black/70 backdrop-blur-sm" />
           <div className="relative w-full max-w-2xl max-h-[90vh] bg-card rounded-xl border border-border shadow-xl overflow-hidden flex flex-col">
             {/* Header - Fixed */}
             <div className="flex items-center justify-between p-4 border-b border-border shrink-0">
@@ -7601,15 +8842,9 @@ function BannerFormModal({ banner, onSave, lang, activeLanguages }: { banner?: B
                 folder="banners"
               />
 
-              <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <label className="text-xs text-muted-foreground text-left block">{t('Link URL (optional)', '链接地址 (可选)', lang)}</label>
-                  <input value={linkUrl} onChange={(e) => setLinkUrl(e.target.value)} placeholder="https://..." className="mt-1 w-full rounded-lg border border-border bg-secondary px-3 py-2 text-sm" />
-                </div>
-                <div>
-                  <label className="text-xs text-muted-foreground text-left block">{t('Sort Order', '排序', lang)}</label>
-                  <input type="number" value={sortOrder} onChange={(e) => setSortOrder(parseInt(e.target.value) || 0)} className="mt-1 w-full rounded-lg border border-border bg-secondary px-3 py-2 text-sm" />
-                </div>
+              <div>
+                <label className="text-xs text-muted-foreground text-left block">{t('Link URL (optional)', '链接地址 (可选)', lang)}</label>
+                <input value={linkUrl} onChange={(e) => setLinkUrl(e.target.value)} placeholder="https://..." className="mt-1 w-full rounded-lg border border-border bg-secondary px-3 py-2 text-sm" />
               </div>
 
               <label className="flex items-center gap-2 text-sm">
@@ -7660,3 +8895,8 @@ function BannerFormModal({ banner, onSave, lang, activeLanguages }: { banner?: B
     </>
   );
 }
+
+
+
+
+
