@@ -149,12 +149,16 @@ export function UsZoneMall() {
     <div className="min-h-screen bg-white">
       <SiteHeader activeTab="shop-by-state" />
 
-      <main className="mx-auto max-w-7xl px-4 py-8">
+      <main className="mx-auto max-w-[1440px] px-4 sm:px-6 lg:px-8 py-8">
         {/* Popular states 导航卡：只做法律查阅入口，不参与商品过滤 */}
         <section>
-          <h2 className="text-2xl font-bold tracking-tight text-gray-900">Popular states</h2>
+          <h2 className="text-2xl font-bold tracking-tight text-gray-900">
+            {zh ? '各州电子烟法规' : 'Vaping Laws by State'}
+          </h2>
           <p className="mt-1 text-sm text-gray-500">
-            {zh ? '这些州已有完整、可溯源的法规指南。' : 'Full, source-backed guides are live for these states.'}
+            {zh
+              ? '订购前，请您仔细了解您所在的州制定的电子烟相关法律规定、在线运输限制以及 PMTA 目录状态。避免您下单后出现海关扣押、当地法律无法邮寄等问题，导致您无法收货。'
+              : 'Before ordering, please carefully review your state\u2019s vaping laws, online shipping restrictions and PMTA directory status to avoid customs seizure or local-law shipping blocks that prevent delivery.'}
           </p>
           <div className="mt-4 grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6">
             {LAUNCH_STATES.map((state) => {
@@ -279,7 +283,7 @@ export function UsZoneMall() {
                     lineWidth={1}
                     outset={0}
                   >
-                    <div className="group overflow-hidden rounded-2xl border border-gray-200 bg-white shadow-sm transition-all hover:shadow-md">
+                    <div className="group hover-border-beam relative overflow-hidden rounded-2xl border border-gray-200 bg-white shadow-sm transition-all hover:shadow-md">
                       <Link
                         href={`/product/${product.slug}`}
                         className="relative block aspect-square overflow-hidden bg-gray-50"
