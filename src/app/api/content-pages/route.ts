@@ -19,7 +19,7 @@ export async function GET(request: NextRequest) {
     // Get single content page detail (only published)
     const { data: pages, error: pageError } = await supabase
       .from('content_pages')
-      .select('*, content_page_translations(*)')
+      .select('*, content_page_translations(*, authors(*))')
       .eq('slug', slug)
       .eq('is_published', true)
       .eq('content_page_translations.language', language)
@@ -35,6 +35,13 @@ export async function GET(request: NextRequest) {
     }
 
     const translation = page.content_page_translations?.[0] || page.content_page_translations;
+    const author = translation?.authors;
+    const authorData = author ? {
+      id: author.id,
+      name: author.name,
+      avatar_url: author.avatar_url,
+      bio: author.bio,
+    } : null;
 
     return NextResponse.json({
       success: true,
@@ -48,6 +55,7 @@ export async function GET(request: NextRequest) {
         created_at: page.created_at,
         title: translation?.title || '',
         content: translation?.content || '',
+        author: authorData,
       },
     });
   }

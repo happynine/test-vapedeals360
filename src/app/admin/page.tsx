@@ -287,7 +287,7 @@ interface PromotionProduct { id: number; promotion_id: number; product_id?: numb
 interface Promotion { id: number; title?: string; slug: string; special_price: number | null; currency: string | null; sort_order: number; is_active: boolean; product_count?: number; promotion_translations: PromotionTranslation[]; promotion_products?: PromotionProduct[]; }
 interface Product { id: number; slug: string; category_id: number | null; image_url: string | null; image_url_small: string | null; image_key: string | null; home_image_key: string | null; home_image_url: string | null; images: string | null; sales_region: string | null; is_active: boolean; is_featured: boolean; notes: string; updated_at?: string; has_promotion?: boolean; active_promotion_count?: number; has_ended_promotion?: boolean; ended_promotion_count?: number; promotion_prices?: Array<Record<string, unknown>>; product_translations: ProductTranslation[]; product_prices: ProductPrice[]; categories?: { id: number; slug: string; category_translations: CategoryTranslation[] } | null; }
 
-type Tab = 'site_settings' | 'products' | 'promotions' | 'categories' | 'stores' | 'banners' | 'analytics' | 'best_vapes' | 'news' | 'database_backup';
+type Tab = 'site_settings' | 'products' | 'promotions' | 'categories' | 'stores' | 'banners' | 'analytics' | 'best_vapes' | 'news' | 'authors' | 'database_backup';
 type StaticPageSlug = 'privacy-policy' | 'about-us' | 'disclaimer' | 'affiliate-disclosure' | 'terms-of-service';
 interface Language { id: number; code: string; name: string; is_active: boolean; is_hidden: boolean; sort_order: number; }
 const DEFAULT_LANGUAGES: Language[] = [{ id: 1, code: 'en', name: 'English', is_active: true, is_hidden: false, sort_order: 0 }, { id: 2, code: 'zh', name: '中文', is_active: true, is_hidden: false, sort_order: 1 }];
@@ -831,6 +831,7 @@ export default function AdminPage() {
     banners: { en: 'Banners', zh: 'Banner' },
     best_vapes: { en: 'Best Vapes', zh: 'Best Vapes' },
     news: { en: 'News', zh: '新闻' },
+    authors: { en: 'Writers', zh: '作家管理' },
     analytics: { en: 'Analytics', zh: '数据统计' },
     database_backup: { en: 'Database Backup', zh: '数据库备份' },
   };
@@ -922,7 +923,7 @@ export default function AdminPage() {
           <p className="mt-1 text-xs text-muted-foreground">{t('Admin Panel', '管理后台', adminLang)}</p>
         </div>
         <nav className="px-3 space-y-1">
-          {(['site_settings', 'products', 'promotions', 'categories', 'stores', 'banners', 'best_vapes', 'news', 'analytics', 'database_backup'] as Tab[]).map((tab) => (
+          {(['site_settings', 'products', 'promotions', 'categories', 'stores', 'banners', 'best_vapes', 'news', 'authors', 'analytics', 'database_backup'] as Tab[]).map((tab) => (
             <button
               key={tab}
               onClick={() => setActiveTab(tab)}
@@ -936,6 +937,7 @@ export default function AdminPage() {
               {tab === 'banners' && <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" /></svg>}
               {tab === 'best_vapes' && <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11.049 2.927c.3-.921 1.603-.921 1.902 0l1.519 4.674a1 1 0 00.95.69h4.915c.969 0 1.371 1.24.588 1.81l-3.976 2.888a1 1 0 00-.363 1.118l1.518 4.674c.3.922-.755 1.688-1.538 1.118l-3.976-2.888a1 1 0 00-1.176 0l-3.976 2.888c-.783.57-1.838-.197-1.538-1.118l1.518-4.674a1 1 0 00-.363-1.118l-3.976-2.888c-.784-.57-.38-1.81.588-1.81h4.914a1 1 0 00.951-.69l1.519-4.674z" /></svg>}
               {tab === 'news' && <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 20H5a2 2 0 01-2-2V6a2 2 0 012-2h10a2 2 0 012 2v1m2 13a2 2 0 01-2-2V7m2 13a2 2 0 002-2V9a2 2 0 00-2-2h-2m-4-3H9M7 16h6M7 8h6v4H7V8z" /></svg>}
+              {tab === 'authors' && <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z" /></svg>}
               {tab === 'analytics' && <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" /></svg>}
               {tab === 'database_backup' && <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 7v10c0 2.21 3.582 4 8 4s8-1.79 8-4V7M4 7c0 2.21 3.582 4 8 4s8-1.79 8-4M4 7c0-2.21 3.582-4 8-4s8 1.79 8 4m0 5c0 2.21-3.582 4-8 4s-8-1.79-8-4" /></svg>}
               {t(tabLabels[tab].en, tabLabels[tab].zh, adminLang)}
@@ -2261,6 +2263,10 @@ export default function AdminPage() {
           {/* News Tab */}
           {activeTab === 'news' && (
             <ContentPagesManager ref={newsRef} type="news" title={t('News', '新闻', adminLang)} lang={adminLang} isFullPage activeLanguages={activeLanguages} />
+          )}
+          {/* Authors Tab */}
+          {activeTab === 'authors' && (
+            <AuthorsManager lang={adminLang} activeLanguages={activeLanguages} />
           )}
 
           {/* Promotion Toggle Confirm Modal */}
@@ -4926,7 +4932,7 @@ export interface ContentPagesManagerRef {
 const ContentPagesManager = forwardRef<ContentPagesManagerRef, { type: string; title: string; lang: string; isFullPage?: boolean; activeLanguages: Language[] }>(function ContentPagesManager({ type, title, lang, isFullPage, activeLanguages }, ref) {
   const [pages, setPages] = useState<Array<{
     id: number; slug: string; cover_image: string | null; sort_order: number; is_published: boolean;
-    content_page_translations: Array<{ id: number; language: string; title: string; content: string }>;
+    content_page_translations: Array<{ id: number; language: string; title: string; content: string; author_id?: number | null }>;
   }>>([]);
   const [loading, setLoading] = useState(true);
   const [editingPage, setEditingPage] = useState<number | null>(null);
@@ -4938,12 +4944,22 @@ const ContentPagesManager = forwardRef<ContentPagesManagerRef, { type: string; t
   const [formSortOrder, setFormSortOrder] = useState(0);
   const [formPublished, setFormPublished] = useState(true);
   const [hasFormChanges, setHasFormChanges] = useState(false);
-  const [formTranslations, setFormTranslations] = useState<Array<{ id?: number; language: string; title: string; content: string }>>([]);
+  const [formTranslations, setFormTranslations] = useState<Array<{ id?: number; language: string; title: string; content: string; author_id?: number | null }>>([]);
   const [editLang, setEditLang] = useState<string>('en');
   const [saving, setSaving] = useState(false);
   const [publishSuccess, setPublishSuccess] = useState(false);
   const [listPublishMsg, setListPublishMsg] = useState<string | null>(null);
   const editorRef = useRef<RichTextEditorRef>(null);
+
+  // Writers available for selection (grouped by language)
+  const [authorsList, setAuthorsList] = useState<Array<{ id: number; name: string; language: string; is_active: boolean }>>([]);
+
+  useEffect(() => {
+    if (!activeLanguages.length) return;
+    adminFetch('/api/admin/authors').then(r => r.json()).then(json => {
+      if (json.success) setAuthorsList(json.data || []);
+    }).catch(() => {});
+  }, [activeLanguages.length, showForm]);
 
   // Global disclaimer settings modal state
   const [showDisclaimerModal, setShowDisclaimerModal] = useState(false);
@@ -4992,8 +5008,12 @@ const ContentPagesManager = forwardRef<ContentPagesManagerRef, { type: string; t
     const translations = activeLanguages.map(l => {
       const existing = page.content_page_translations?.find((t: { language: string }) => t.language === l.code);
       return existing ? {
-        ...existing,
-      } : { language: l.code, title: '', content: '' };
+        id: existing.id,
+        language: existing.language,
+        title: existing.title,
+        content: existing.content,
+        author_id: existing.author_id ?? null,
+      } : { language: l.code, title: '', content: '', author_id: null };
     });
     setFormTranslations(translations);
     setPublishSuccess(false);
@@ -5024,8 +5044,8 @@ const ContentPagesManager = forwardRef<ContentPagesManagerRef, { type: string; t
       setFormPublished(true);
       setHasFormChanges(false);
       const initialTranslations = [
-        { language: 'en', title: '', content: '' },
-        { language: 'zh', title: '', content: '' },
+        { language: 'en', title: '', content: '', author_id: null },
+        { language: 'zh', title: '', content: '', author_id: null },
       ];
       setFormTranslations(initialTranslations);
       setPublishSuccess(false);
@@ -5234,6 +5254,7 @@ const ContentPagesManager = forwardRef<ContentPagesManagerRef, { type: string; t
           language: t.language,
           title: t.title,
           content: t.content,
+          author_id: t.author_id ?? null,
         })),
       };
 
@@ -5254,7 +5275,7 @@ const ContentPagesManager = forwardRef<ContentPagesManagerRef, { type: string; t
               const existing = json.data.content_page_translations.find((t: { language: string }) => t.language === l.code);
               const current = publishTranslations.find(t => t.language === l.code);
               if (existing) {
-                return { id: existing.id, language: existing.language, title: current?.title || existing.title, content: current?.content || existing.content };
+                return { id: existing.id, language: existing.language, title: current?.title || existing.title, content: current?.content || existing.content, author_id: current?.author_id ?? existing.author_id ?? null };
               }
               return current || { language: l.code, title: '', content: '' };
             });
@@ -5396,6 +5417,19 @@ const ContentPagesManager = forwardRef<ContentPagesManagerRef, { type: string; t
             {formTranslations.map((tr, idx) => tr.language === editLang ? (
               <div key={tr.language} className="space-y-3">
                 <div>
+                  <label className="block text-xs text-muted-foreground mb-1">{t('Writer', '作者', lang)}</label>
+                  <select
+                    value={tr.author_id ?? ''}
+                    onChange={e => { markChanged(); setFormTranslations(prev => prev.map((t, i) => i === idx ? { ...t, author_id: e.target.value ? parseInt(e.target.value) : null } : t)); }}
+                    className="w-full rounded-lg border border-border bg-background px-3 py-2 text-sm"
+                  >
+                    <option value="">{t('— None —', '— 无 —', lang)}</option>
+                    {authorsList.filter(a => a.language === tr.language && a.is_active).map(a => (
+                      <option key={a.id} value={a.id}>{a.name}</option>
+                    ))}
+                  </select>
+                </div>
+                <div>
                   <label className="block text-xs text-muted-foreground mb-1">{t('Title', '标题', lang)}</label>
                   <input
                     value={tr.title}
@@ -5532,6 +5566,19 @@ const ContentPagesManager = forwardRef<ContentPagesManagerRef, { type: string; t
                 </div>
                 {formTranslations.map((tr, idx) => tr.language === editLang ? (
                   <div key={tr.language} className="space-y-3">
+                    <div>
+                      <label className="block text-xs text-muted-foreground mb-1">{t('Writer', '作者', lang)}</label>
+                      <select
+                        value={tr.author_id ?? ''}
+                        onChange={e => { markChanged(); setFormTranslations(prev => prev.map((t, i) => i === idx ? { ...t, author_id: e.target.value ? parseInt(e.target.value) : null } : t)); }}
+                        className="w-full rounded-lg border border-border bg-background px-3 py-2 text-sm"
+                      >
+                        <option value="">{t('— None —', '— 无 —', lang)}</option>
+                        {authorsList.filter(a => a.language === tr.language && a.is_active).map(a => (
+                          <option key={a.id} value={a.id}>{a.name}</option>
+                        ))}
+                      </select>
+                    </div>
                     <div>
                       <label className="block text-xs text-muted-foreground mb-1">{t('Title', '标题', lang)}</label>
                       <input
@@ -5682,6 +5729,205 @@ const ContentPagesManager = forwardRef<ContentPagesManagerRef, { type: string; t
 
 export interface StaticPageEditorRef {
   publish: () => Promise<void>;
+}
+
+// ============== Authors Manager ==============
+interface Author {
+  id: number;
+  name: string;
+  avatar_url: string | null;
+  bio: string | null;
+  language: string;
+  is_active: boolean;
+}
+
+function AuthorsManager({ lang, activeLanguages }: { lang: string; activeLanguages: Language[] }) {
+  const [authors, setAuthors] = useState<Author[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [showForm, setShowForm] = useState(false);
+  const [editingId, setEditingId] = useState<number | null>(null);
+  const [formName, setFormName] = useState('');
+  const [formAvatar, setFormAvatar] = useState<string | null>(null);
+  const [formBio, setFormBio] = useState('');
+  const [formLanguage, setFormLanguage] = useState('en');
+  const [formActive, setFormActive] = useState(true);
+  const [saving, setSaving] = useState(false);
+
+  const fetchAuthors = useCallback(async () => {
+    setLoading(true);
+    try {
+      const res = await adminFetch('/api/admin/authors');
+      const json = await res.json();
+      if (json.success) setAuthors(json.data || []);
+    } catch (err) {
+      console.error('Failed to fetch authors:', err);
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  useEffect(() => { fetchAuthors(); }, [fetchAuthors]);
+
+  const openNew = () => {
+    setEditingId(null);
+    setFormName('');
+    setFormAvatar(null);
+    setFormBio('');
+    setFormLanguage(activeLanguages[0]?.code || 'en');
+    setFormActive(true);
+    setShowForm(true);
+  };
+
+  const openEdit = (a: Author) => {
+    setEditingId(a.id);
+    setFormName(a.name);
+    setFormAvatar(a.avatar_url);
+    setFormBio(a.bio || '');
+    setFormLanguage(a.language);
+    setFormActive(a.is_active);
+    setShowForm(true);
+  };
+
+  const handleSave = async () => {
+    if (!formName.trim()) { alert(t('Name is required', '请填写作家名', lang)); return; }
+    setSaving(true);
+    try {
+      const body = {
+        id: editingId,
+        name: formName.trim(),
+        avatar_url: formAvatar,
+        bio: formBio || null,
+        language: formLanguage,
+        is_active: formActive,
+      };
+      const res = await adminFetch('/api/admin/authors', {
+        method: editingId ? 'PUT' : 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body),
+      });
+      const json = await res.json();
+      if (json.success) {
+        setShowForm(false);
+        fetchAuthors();
+      } else {
+        alert(json.error || 'Save failed');
+      }
+    } catch (err) {
+      console.error('Save author error:', err);
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const handleDelete = async (a: Author) => {
+    if (!confirm(t(`Delete writer "${a.name}"? Articles by this writer will keep their text but lose the writer link.`, `确定删除作家「${a.name}」？该作家的文章会保留内容，但作家关联会被移除。`, lang))) return;
+    try {
+      const res = await adminFetch(`/api/admin/authors?id=${a.id}`, { method: 'DELETE' });
+      const json = await res.json();
+      if (json.success) fetchAuthors();
+      else alert(json.error || 'Delete failed');
+    } catch (err) {
+      console.error('Delete author error:', err);
+    }
+  };
+
+  return (
+    <div>
+      <div className="flex items-center justify-between mb-6">
+        <h2 className="text-2xl font-bold">{t('Writers', '作家管理', lang)}</h2>
+        <button
+          onClick={openNew}
+          className="rounded-lg bg-primary px-4 py-2 text-sm font-semibold text-primary-foreground hover:bg-primary/90"
+        >
+          + {t('Add Writer', '添加作家', lang)}
+        </button>
+      </div>
+
+      {loading ? (
+        <div className="space-y-3">{Array.from({ length: 3 }).map((_, i) => <div key={i} className="h-16 rounded-lg bg-secondary animate-pulse" />)}</div>
+      ) : authors.length === 0 ? (
+        <div className="py-12 text-center text-muted-foreground">
+          {t('No writers yet. Click "Add Writer" to get started.', '暂无作家。点击"添加作家"开始。', lang)}
+        </div>
+      ) : (
+        <div className="space-y-8">
+          {activeLanguages.map(l => {
+            const group = authors.filter(a => a.language === l.code);
+            if (group.length === 0) return null;
+            return (
+              <div key={l.code}>
+                <h3 className="text-sm font-semibold text-muted-foreground mb-3 uppercase tracking-wide">{l.name} ({l.code})</h3>
+                <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+                  {group.map(a => (
+                    <div key={a.id} className="rounded-xl border border-border bg-card p-4 flex items-center gap-3">
+                      <div className="h-12 w-12 rounded-full overflow-hidden bg-secondary flex items-center justify-center shrink-0">
+                        {a.avatar_url
+                          ? <img src={getImageUrl(a.avatar_url)} alt={a.name} className="w-full h-full object-cover" />
+                          : <span className="text-sm font-bold text-primary">{a.name.charAt(0)}</span>}
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <p className="text-sm font-medium truncate">{a.name}</p>
+                        <p className="text-xs text-muted-foreground truncate">
+                          {a.is_active ? t('Active', '启用', lang) : t('Disabled', '停用', lang)}
+                          {a.bio ? ` · ${a.bio.slice(0, 40)}` : ''}
+                        </p>
+                      </div>
+                      <div className="flex items-center gap-1 shrink-0">
+                        <button onClick={() => openEdit(a)} className="rounded-lg border border-border px-2 py-1 text-xs hover:bg-secondary">{t('Edit', '编辑', lang)}</button>
+                        <button onClick={() => handleDelete(a)} className="rounded-lg border border-red-800 px-2 py-1 text-xs text-red-400 hover:bg-red-900/30">{t('Delete', '删除', lang)}</button>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      )}
+
+      {showForm && (
+        <div className="fixed inset-0 z-50 flex items-start justify-center bg-black/60 backdrop-blur-sm overflow-y-auto py-8">
+          <div className="bg-card rounded-2xl border border-border p-6 w-full max-w-lg shadow-2xl relative">
+            <button onClick={() => setShowForm(false)} className="absolute top-3 right-3 p-1 rounded-md hover:bg-secondary text-muted-foreground hover:text-foreground"><X className="w-5 h-5" /></button>
+            <h3 className="text-lg font-bold mb-4">{editingId ? t('Edit Writer', '编辑作家', lang) : t('Add Writer', '添加作家', lang)}</h3>
+            <div className="space-y-4">
+              <div className="flex items-start gap-4">
+                <div className="w-28 shrink-0">
+                  <ImageUpload value={formAvatar} onChange={setFormAvatar} aspectRatio={1} recommendedSize="200x200px" label={t('Avatar', '头像', lang)} folder="authors" lang={lang} />
+                </div>
+                <div className="flex-1 space-y-3">
+                  <div>
+                    <label className="block text-xs text-muted-foreground mb-1">{t('Name', '作家名', lang)}</label>
+                    <input value={formName} onChange={e => setFormName(e.target.value)} className="w-full rounded-lg border border-border bg-background px-3 py-2 text-sm" />
+                  </div>
+                  <div>
+                    <label className="block text-xs text-muted-foreground mb-1">{t('Language', '语言', lang)}</label>
+                    <select value={formLanguage} onChange={e => setFormLanguage(e.target.value)} className="w-full rounded-lg border border-border bg-background px-3 py-2 text-sm">
+                      {activeLanguages.map(l => <option key={l.code} value={l.code}>{l.name}</option>)}
+                    </select>
+                  </div>
+                </div>
+              </div>
+              <div>
+                <label className="block text-xs text-muted-foreground mb-1">{t('Bio', '简介', lang)}</label>
+                <textarea value={formBio} onChange={e => setFormBio(e.target.value)} rows={3} className="w-full rounded-lg border border-border bg-background px-3 py-2 text-sm" />
+              </div>
+              <label className="flex items-center gap-2 text-sm">
+                <input type="checkbox" checked={formActive} onChange={e => setFormActive(e.target.checked)} />
+                {t('Active (selectable in article editor)', '启用（可在文章编辑页选择）', lang)}
+              </label>
+            </div>
+            <div className="mt-6 flex justify-end gap-2">
+              <button onClick={() => setShowForm(false)} className="rounded-lg border border-border px-4 py-2 text-sm">{t('Cancel', '取消', lang)}</button>
+              <button onClick={handleSave} disabled={saving} className="rounded-lg bg-primary px-4 py-2 text-sm font-semibold text-primary-foreground hover:bg-primary/90 disabled:opacity-50">
+                {saving ? t('Saving...', '保存中...', lang) : t('Save', '保存', lang)}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  );
 }
 
 // ============== Static Page Editor (Privacy Policy / About Us) ==============
