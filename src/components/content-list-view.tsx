@@ -6,6 +6,7 @@ import { SafeImage } from '@/components/safe-image';
 import { SiteHeader } from '@/components/site-header';
 import { useLanguage } from '@/hooks/use-language';
 import { useSiteSettings } from '@/components/site-settings-provider';
+import { getImageUrl } from '@/lib/image-url';
 
 interface ContentPageItem {
   id: number;
@@ -14,6 +15,16 @@ interface ContentPageItem {
   cover_image: string | null;
   sort_order: number;
   title: string;
+  created_at?: string | null;
+  excerpt?: string;
+  author?: { id: number; name: string; avatar_url: string | null } | null;
+}
+
+function formatCardDate(value: string | null | undefined): string {
+  if (!value) return '';
+  const d = new Date(value);
+  if (Number.isNaN(d.getTime())) return '';
+  return d.toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: 'numeric' });
 }
 
 interface ContentListViewProps {
@@ -85,7 +96,7 @@ export function ContentListView({
                 <Link
                   key={page.id}
                   href={`${basePath}/${encodeURI(page.slug)}`}
-                  className="group block bg-gray-50 rounded-xl overflow-hidden border border-gray-200 hover:border-purple-300 transition-all"
+                  className="group flex flex-col h-full bg-gray-50 rounded-xl overflow-hidden border border-gray-200 hover:border-purple-300 transition-all"
                 >
                   <div className="aspect-video bg-white relative overflow-hidden">
                     {page.cover_image ? (
@@ -100,8 +111,42 @@ export function ContentListView({
                       </div>
                     )}
                   </div>
-                  <div className="p-5">
-                    <h2 className="text-lg font-semibold group-hover:text-purple-700 transition-colors">{page.title || page.slug}</h2>
+                  <div className="p-4 flex flex-col flex-1">
+                    <h2 className="text-base font-semibold group-hover:text-purple-700 transition-colors line-clamp-2">
+                      {page.title || page.slug}
+                    </h2>
+                    {page.excerpt && (
+                      <p className="mt-2 text-sm text-gray-500 leading-relaxed line-clamp-3">
+                        {page.excerpt}
+                      </p>
+                    )}
+                    {(page.author || page.created_at) && (
+                      <div className="mt-auto pt-3 mt-4 border-t border-gray-100 flex items-center gap-2.5">
+                        {page.author && (
+                          <div className="h-7 w-7 rounded-full overflow-hidden bg-gray-200 flex items-center justify-center shrink-0">
+                            {page.author.avatar_url ? (
+                              <img
+                                src={getImageUrl(page.author.avatar_url)}
+                                alt={page.author.name}
+                                className="w-full h-full object-cover"
+                              />
+                            ) : (
+                              <span className="text-[10px] font-bold text-purple-700">
+                                {page.author.name.charAt(0)}
+                              </span>
+                            )}
+                          </div>
+                        )}
+                        <div className="min-w-0 text-xs text-gray-500">
+                          {page.author && (
+                            <span className="font-medium text-gray-800 truncate block">
+                              {page.author.name}
+                            </span>
+                          )}
+                          {page.created_at && <span>{formatCardDate(page.created_at)}</span>}
+                        </div>
+                      </div>
+                    )}
                   </div>
                 </Link>
               ))}
