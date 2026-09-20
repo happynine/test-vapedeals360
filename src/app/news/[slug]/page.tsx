@@ -11,7 +11,7 @@ interface ContentPageDetail {
   cover_image: string | null;
   title: string;
   content: string;
-  author: { id: number; name: string; avatar_url: string | null; bio: string | null } | null;
+  author: { id: number; name: string; avatar_url: string | null; bio: string | null; title?: string | null } | null;
   created_at: string | null;
   updated_at: string | null;
 }
@@ -79,7 +79,7 @@ async function getNewsArticle(rawSlug: string, language: string = 'en'): Promise
       cover_image: page.cover_image,
       title: translation?.title || '',
       content: translation?.content || '',
-      author: author ? { id: author.id, name: author.name, avatar_url: author.avatar_url, bio: author.bio } : null,
+      author: author ? { id: author.id, name: author.name, avatar_url: author.avatar_url, bio: author.bio, title: author.title ?? null } : null,
       created_at: page.created_at || null,
       updated_at: page.updated_at || page.created_at || null,
     };
@@ -147,7 +147,7 @@ export default async function NewsDetailPage({ params }: { params: Promise<{ slu
         datePublished: article.created_at || undefined,
         dateModified: article.updated_at || article.created_at || undefined,
         author: article.author
-          ? { '@type': 'Person', name: article.author.name, image: article.author.avatar_url || undefined, url: `https://www.vapedeals360.com/news#writer-${article.author.id}` }
+          ? { '@type': 'Person', name: article.author.name, image: article.author.avatar_url || undefined, jobTitle: article.author.title || undefined, url: `https://www.vapedeals360.com/news#writer-${article.author.id}` }
           : { '@type': 'Organization', name: 'VapeDeals360' },
         publisher: {
           '@type': 'Organization',

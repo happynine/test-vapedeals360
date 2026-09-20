@@ -31,10 +31,11 @@ export async function POST(request: NextRequest) {
   if (!(await verifyAdminSession(request))) return unauthorizedResponse();
 
   const body = await request.json();
-  const { name, avatar_url, bio, language, is_active } = body;
+  const { name, avatar_url, bio, language, is_active, domain, title } = body;
   if (!name || !name.trim()) {
     return NextResponse.json({ success: false, error: 'Name is required' }, { status: 400 });
   }
+  const authorDomain = domain === 'best_vapes' ? 'best_vapes' : 'news';
 
   const supabase = getServiceRoleClient();
   const { data, error } = await supabase
@@ -45,6 +46,8 @@ export async function POST(request: NextRequest) {
       bio: bio || null,
       language: language || 'en',
       is_active: is_active === false ? false : true,
+      domain: authorDomain,
+      title: title ? String(title).trim() : null,
     })
     .select()
     .single();
@@ -60,7 +63,7 @@ export async function PUT(request: NextRequest) {
   if (!(await verifyAdminSession(request))) return unauthorizedResponse();
 
   const body = await request.json();
-  const { id, name, avatar_url, bio, language, is_active } = body;
+  const { id, name, avatar_url, bio, language, is_active, domain, title } = body;
   if (!id) return NextResponse.json({ success: false, error: 'id is required' }, { status: 400 });
 
   const supabase = getServiceRoleClient();
@@ -80,6 +83,8 @@ export async function PUT(request: NextRequest) {
   if (bio !== undefined) updateFields.bio = bio;
   if (language !== undefined) updateFields.language = language;
   if (is_active !== undefined) updateFields.is_active = is_active;
+  if (domain !== undefined) updateFields.domain = domain === 'best_vapes' ? 'best_vapes' : 'news';
+  if (title !== undefined) updateFields.title = title ? String(title).trim() : null;
 
   const { data, error } = await supabase.from('authors').update(updateFields).eq('id', id).select().single();
   if (error) return NextResponse.json({ success: false, error: error.message }, { status: 500 });

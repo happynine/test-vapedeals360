@@ -16,7 +16,7 @@ interface ContentPageDetail {
   cover_image: string | null;
   title: string;
   content: string;
-  author?: { id: number; name: string; avatar_url: string | null; bio: string | null } | null;
+  author?: { id: number; name: string; avatar_url: string | null; bio: string | null; title?: string | null } | null;
   created_at?: string | null;
 }
 
@@ -92,6 +92,7 @@ export function NewsDetailClient({ slug, initialArticle, disclaimer: initialDisc
                     )}
                     <div className="text-gray-600">
                       {page.author && <span className="font-medium text-gray-900">{page.author.name}</span>}
+                      {page.author?.title && <span className="text-gray-500">, {page.author.title}</span>}
                       {page.author && page.created_at && <span className="mx-1.5 text-gray-300">·</span>}
                       {page.created_at && (
                         <span>Published: {formatArticleDate(page.created_at)}</span>

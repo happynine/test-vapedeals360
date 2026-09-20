@@ -4952,7 +4952,7 @@ const ContentPagesManager = forwardRef<ContentPagesManagerRef, { type: string; t
   const editorRef = useRef<RichTextEditorRef>(null);
 
   // Writers available for selection (grouped by language)
-  const [authorsList, setAuthorsList] = useState<Array<{ id: number; name: string; language: string; is_active: boolean }>>([]);
+  const [authorsList, setAuthorsList] = useState<Array<{ id: number; name: string; language: string; is_active: boolean; domain?: string }>>([]);
 
   useEffect(() => {
     if (!activeLanguages.length) return;
@@ -5424,7 +5424,7 @@ const ContentPagesManager = forwardRef<ContentPagesManagerRef, { type: string; t
                     className="w-full rounded-lg border border-border bg-background px-3 py-2 text-sm"
                   >
                     <option value="">{t('— None —', '— 无 —', lang)}</option>
-                    {authorsList.filter(a => a.language === tr.language && a.is_active).map(a => (
+                    {authorsList.filter(a => a.language === tr.language && a.is_active && a.domain === type).map(a => (
                       <option key={a.id} value={a.id}>{a.name}</option>
                     ))}
                   </select>
@@ -5574,7 +5574,7 @@ const ContentPagesManager = forwardRef<ContentPagesManagerRef, { type: string; t
                         className="w-full rounded-lg border border-border bg-background px-3 py-2 text-sm"
                       >
                         <option value="">{t('— None —', '— 无 —', lang)}</option>
-                        {authorsList.filter(a => a.language === tr.language && a.is_active).map(a => (
+                        {authorsList.filter(a => a.language === tr.language && a.is_active && a.domain === type).map(a => (
                           <option key={a.id} value={a.id}>{a.name}</option>
                         ))}
                       </select>
@@ -5739,6 +5739,8 @@ interface Author {
   bio: string | null;
   language: string;
   is_active: boolean;
+  domain: string;
+  title: string | null;
 }
 
 function AuthorsManager({ lang, activeLanguages }: { lang: string; activeLanguages: Language[] }) {
@@ -5751,6 +5753,8 @@ function AuthorsManager({ lang, activeLanguages }: { lang: string; activeLanguag
   const [formBio, setFormBio] = useState('');
   const [formLanguage, setFormLanguage] = useState('en');
   const [formActive, setFormActive] = useState(true);
+  const [formDomain, setFormDomain] = useState('news');
+  const [formTitle, setFormTitle] = useState('');
   const [saving, setSaving] = useState(false);
 
   const fetchAuthors = useCallback(async () => {
@@ -5775,6 +5779,8 @@ function AuthorsManager({ lang, activeLanguages }: { lang: string; activeLanguag
     setFormBio('');
     setFormLanguage(activeLanguages[0]?.code || 'en');
     setFormActive(true);
+    setFormDomain('news');
+    setFormTitle('');
     setShowForm(true);
   };
 
@@ -5785,6 +5791,8 @@ function AuthorsManager({ lang, activeLanguages }: { lang: string; activeLanguag
     setFormBio(a.bio || '');
     setFormLanguage(a.language);
     setFormActive(a.is_active);
+    setFormDomain(a.domain || 'news');
+    setFormTitle(a.title || '');
     setShowForm(true);
   };
 
@@ -5799,6 +5807,8 @@ function AuthorsManager({ lang, activeLanguages }: { lang: string; activeLanguag
         bio: formBio || null,
         language: formLanguage,
         is_active: formActive,
+        domain: formDomain === 'best_vapes' ? 'best_vapes' : 'news',
+        title: formTitle.trim() || null,
       };
       const res = await adminFetch('/api/admin/authors', {
         method: editingId ? 'PUT' : 'POST',
@@ -5866,10 +5876,15 @@ function AuthorsManager({ lang, activeLanguages }: { lang: string; activeLanguag
                           : <span className="text-sm font-bold text-primary">{a.name.charAt(0)}</span>}
                       </div>
                       <div className="flex-1 min-w-0">
-                        <p className="text-sm font-medium truncate">{a.name}</p>
+                        <p className="text-sm font-medium truncate">
+                          {a.name}
+                          <span className={`ml-2 rounded px-1.5 py-0.5 text-[10px] font-semibold align-middle ${a.domain === 'best_vapes' ? 'bg-purple-100 text-purple-700' : 'bg-blue-100 text-blue-700'}`}>
+                            {a.domain === 'best_vapes' ? 'Best Vapes' : 'News'}
+                          </span>
+                        </p>
                         <p className="text-xs text-muted-foreground truncate">
-                          {a.is_active ? t('Active', '启用', lang) : t('Disabled', '停用', lang)}
-                          {a.bio ? ` · ${a.bio.slice(0, 40)}` : ''}
+                          {a.title || (a.is_active ? t('Active', '启用', lang) : t('Disabled', '停用', lang))}
+                          {!a.title && a.bio ? ` · ${a.bio.slice(0, 40)}` : ''}
                         </p>
                       </div>
                       <div className="flex items-center gap-1 shrink-0">
@@ -5905,6 +5920,17 @@ function AuthorsManager({ lang, activeLanguages }: { lang: string; activeLanguag
                     <select value={formLanguage} onChange={e => setFormLanguage(e.target.value)} className="w-full rounded-lg border border-border bg-background px-3 py-2 text-sm">
                       {activeLanguages.map(l => <option key={l.code} value={l.code}>{l.name}</option>)}
                     </select>
+                  </div>
+                  <div>
+                    <label className="block text-xs text-muted-foreground mb-1">{t('Domain', '领域', lang)}</label>
+                    <select value={formDomain} onChange={e => setFormDomain(e.target.value)} className="w-full rounded-lg border border-border bg-background px-3 py-2 text-sm">
+                      <option value="news">News</option>
+                      <option value="best_vapes">Best Vapes</option>
+                    </select>
+                  </div>
+                  <div>
+                    <label className="block text-xs text-muted-foreground mb-1">{t('Title', '头衔', lang)}</label>
+                    <input value={formTitle} onChange={e => setFormTitle(e.target.value)} placeholder={t('e.g. Senior Vape Reviewer', '如：资深电子烟测评师', lang)} className="w-full rounded-lg border border-border bg-background px-3 py-2 text-sm" />
                   </div>
                 </div>
               </div>

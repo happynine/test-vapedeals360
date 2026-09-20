@@ -420,10 +420,13 @@ export const authors = pgTable("authors", {
 	bio: text(),
 	language: varchar({ length: 10 }).default('en').notNull(),
 	isActive: boolean("is_active").default(true).notNull(),
+	domain: varchar({ length: 20 }).default('news').notNull(),
+	title: text(),
 	createdAt: timestamp("created_at", { withTimezone: true, mode: 'string' }).defaultNow().notNull(),
 	updatedAt: timestamp("updated_at", { withTimezone: true, mode: 'string' }),
 }, (table) => [
 	index("authors_language_idx").using("btree", table.language.asc().nullsLast().op("text_ops")),
+	index("authors_domain_idx").using("btree", table.domain.asc().nullsLast().op("text_ops")),
 ]);
 
 export const contentPageTranslations = pgTable("content_page_translations", {
