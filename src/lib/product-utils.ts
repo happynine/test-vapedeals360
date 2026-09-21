@@ -85,9 +85,12 @@ export function getDisplayPrice(p: ProductPrice): string {
 
 export function getLowestPrice(prices: ProductPrice[]): ProductPrice | null {
   if (!prices || prices.length === 0) return null;
-  return prices.reduce(
-    (min, p) =>
-      parseFloat(getDisplayPrice(p)) < parseFloat(getDisplayPrice(min)) ? p : min,
+  const numeric = (p: ProductPrice): number => {
+    const n = parseFloat(getDisplayPrice(p));
+    return Number.isNaN(n) ? Infinity : n;
+  };
+  return prices.reduce<ProductPrice>(
+    (min, p) => (numeric(p) < numeric(min) ? p : min),
     prices[0],
   );
 }
