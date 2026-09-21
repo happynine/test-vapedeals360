@@ -143,7 +143,7 @@ export function SiteHeader({ activeTab = 'vape-deals' }: SiteHeaderProps) {
   const runSearch = useCallback(
     async (query: string): Promise<SearchData> => {
       const res = await fetch(
-        `/api/search?q=${encodeURIComponent(query.trim())}&language=${language}&currency=${encodeURIComponent(currencySymbol)}`,
+        `/api/search?q=${encodeURIComponent(query.trim())}&language=${language}&currency=${encodeURIComponent(currencySymbol)}&view=dropdown`,
       );
       const json = await res.json();
       if (json?.success && json.data) return json.data as SearchData;
