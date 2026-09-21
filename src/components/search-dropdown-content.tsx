@@ -73,7 +73,7 @@ export function SearchDropdownContent({
                     onClick={onNavigate}
                     className="flex items-center gap-3 rounded-xl px-3 py-2.5 hover:bg-gray-50 transition-colors"
                   >
-                    <div className="h-[58px] w-[58px] flex-shrink-0 rounded-xl bg-gray-100 overflow-hidden flex items-center justify-center">
+                    <div className="h-[58px] w-[58px] flex-shrink-0 rounded-md bg-gray-100 overflow-hidden flex items-center justify-center">
                       {product.image_url ? (
                         <img
                           src={getImageUrl(product.image_url)}
@@ -124,7 +124,7 @@ export function SearchDropdownContent({
                     onClick={onNavigate}
                     className="flex items-center gap-3 rounded-xl px-3 py-2.5 hover:bg-gray-50 transition-colors"
                   >
-                    <div className="h-[58px] w-[58px] flex-shrink-0 rounded-xl bg-gray-100 overflow-hidden flex items-center justify-center">
+                    <div className="h-[58px] w-[58px] flex-shrink-0 rounded-md bg-gray-100 overflow-hidden flex items-center justify-center">
                       {article.cover_image ? (
                         <img
                           src={getImageUrl(article.cover_image)}
@@ -155,7 +155,7 @@ export function SearchDropdownContent({
                     onClick={onNavigate}
                     className="flex items-center gap-3 rounded-xl px-3 py-2.5 hover:bg-gray-50 transition-colors"
                   >
-                    <div className="h-[58px] w-[58px] flex-shrink-0 rounded-xl bg-gray-100 overflow-hidden flex items-center justify-center">
+                    <div className="h-[58px] w-[58px] flex-shrink-0 rounded-md bg-gray-100 overflow-hidden flex items-center justify-center">
                       {article.cover_image ? (
                         <img
                           src={getImageUrl(article.cover_image)}
