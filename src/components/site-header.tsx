@@ -269,8 +269,8 @@ export function SiteHeader({ activeTab = 'vape-deals' }: SiteHeaderProps) {
                   <input
                     type="text"
                     value={desktopSearchQuery}
-                    onChange={(e) => handleDesktopSearch(e.target.value)}
-                    onFocus={() => { if (desktopSearchQuery.trim()) handleDesktopSearch(desktopSearchQuery); }}
+                    onChange={(e) => { setDesktopSearchFocused(true); handleDesktopSearch(e.target.value); }}
+                    onFocus={() => { setDesktopSearchFocused(true); if (desktopSearchQuery.trim()) handleDesktopSearch(desktopSearchQuery); }}
                     onKeyDown={(e) => {
                       if (e.key === 'Enter' && desktopSearchQuery.trim()) {
                         e.preventDefault();
