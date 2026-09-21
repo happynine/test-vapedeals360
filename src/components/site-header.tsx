@@ -58,9 +58,11 @@ export function SiteHeader({ activeTab = 'vape-deals' }: SiteHeaderProps) {
   const [searchQuery, setSearchQuery] = useState('');
   const [searchResults, setSearchResults] = useState<SearchData>(EMPTY_SEARCH);
   const [searchLoading, setSearchLoading] = useState(false);
+  const [searchDwell, setSearchDwell] = useState(false);
   const [desktopSearchQuery, setDesktopSearchQuery] = useState('');
   const [desktopSearchResults, setDesktopSearchResults] = useState<SearchData>(EMPTY_SEARCH);
   const [desktopSearchLoading, setDesktopSearchLoading] = useState(false);
+  const [desktopSearchDwell, setDesktopSearchDwell] = useState(false);
   const [desktopSearchFocused, setDesktopSearchFocused] = useState(false);
   const desktopSearchRef = useRef<HTMLDivElement>(null);
   const mobileSearchInputRef = useRef<HTMLInputElement>(null);
@@ -157,13 +159,17 @@ export function SiteHeader({ activeTab = 'vape-deals' }: SiteHeaderProps) {
       if (searchDebounceRef.current) {
         clearTimeout(searchDebounceRef.current);
       }
+      // Hide the dropdown while the user is still typing; it only appears after
+      // the 2s dwell timer fires (no loading spinner shown meanwhile).
+      setSearchLoading(false);
+      setSearchDwell(false);
+      setSearchResults(EMPTY_SEARCH);
       if (!query.trim()) {
-        setSearchResults(EMPTY_SEARCH);
-        setSearchLoading(false);
         return;
       }
-      setSearchLoading(true);
       searchDebounceRef.current = setTimeout(async () => {
+        setSearchDwell(true);
+        setSearchLoading(true);
         try {
           setSearchResults(await runSearch(query));
         } catch {
@@ -190,13 +196,17 @@ export function SiteHeader({ activeTab = 'vape-deals' }: SiteHeaderProps) {
       if (desktopDebounceRef.current) {
         clearTimeout(desktopDebounceRef.current);
       }
+      // Hide the dropdown while the user is still typing; it only appears after
+      // the 2s dwell timer fires (no loading spinner shown meanwhile).
+      setDesktopSearchLoading(false);
+      setDesktopSearchDwell(false);
+      setDesktopSearchResults(EMPTY_SEARCH);
       if (!query.trim()) {
-        setDesktopSearchResults(EMPTY_SEARCH);
-        setDesktopSearchLoading(false);
         return;
       }
-      setDesktopSearchLoading(true);
       desktopDebounceRef.current = setTimeout(async () => {
+        setDesktopSearchDwell(true);
+        setDesktopSearchLoading(true);
         try {
           setDesktopSearchResults(await runSearch(query));
         } catch {
@@ -293,7 +303,7 @@ export function SiteHeader({ activeTab = 'vape-deals' }: SiteHeaderProps) {
                   )}
                 </div>
                 {/* Desktop Search Results Dropdown */}
-                {desktopSearchFocused && desktopSearchQuery.trim() && (
+                {desktopSearchFocused && desktopSearchQuery.trim() && desktopSearchDwell && (
                   <div className="absolute top-full left-1/2 -translate-x-1/2 mt-2 w-[440px] max-w-[92vw] bg-white border border-gray-200 rounded-2xl shadow-2xl z-50 max-h-[70vh] overflow-y-auto">
                     <SearchDropdownContent
                       loading={desktopSearchLoading}
@@ -623,7 +633,7 @@ export function SiteHeader({ activeTab = 'vape-deals' }: SiteHeaderProps) {
               )}
             </div>
             {/* Search Results Dropdown */}
-            {searchQuery.trim() && (
+            {searchQuery.trim() && searchDwell && (
               <div className="mt-2 rounded-2xl border border-gray-200 bg-white shadow-xl max-h-[60vh] overflow-y-auto">
                 <SearchDropdownContent
                   loading={searchLoading}
