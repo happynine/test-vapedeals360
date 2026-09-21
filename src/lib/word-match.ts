@@ -48,3 +48,53 @@ export function matchWords(query: string, text: string): boolean {
   }
   return true;
 }
+
+/**
+ * Returns the [start, end) character ranges in the ORIGINAL text that the
+ * query matched, following the same word-order prefix rules as matchWords.
+ * Each matched word contributes the prefix actually used (the needle length).
+ * Returns [] when there is no match.
+ */
+export function getMatchRanges(query: string, text: string): Array<[number, number]> {
+  const rawQuery = (query || '').toLowerCase().trim();
+  if (!rawQuery || !text) return [];
+
+  // CJK: ordered per-character substring matching.
+  if (/[\u4e00-\u9fa5]/.test(rawQuery)) {
+    const ranges: Array<[number, number]> = [];
+    let idx = 0;
+    for (const ch of rawQuery.replace(/\s+/g, '')) {
+      idx = text.toLowerCase().indexOf(ch, idx);
+      if (idx === -1) return [];
+      ranges.push([idx, idx + 1]);
+      idx += 1;
+    }
+    return ranges;
+  }
+
+  const needles = rawQuery.split(/\s+/).filter(Boolean);
+
+  // Build tokens keeping their original offsets in the source text.
+  const tokens: Array<{ start: number; end: number; word: string }> = [];
+  const re = /[a-z0-9]+/gi;
+  let m: RegExpExecArray | null;
+  while ((m = re.exec(text)) !== null) {
+    tokens.push({ start: m.index, end: m.index + m[0].length, word: m[0].toLowerCase() });
+  }
+
+  const ranges: Array<[number, number]> = [];
+  let cursor = 0;
+  for (const needle of needles) {
+    let found = -1;
+    for (let i = cursor; i < tokens.length; i++) {
+      if (tokens[i].word.startsWith(needle)) {
+        found = i;
+        break;
+      }
+    }
+    if (found === -1) return [];
+    ranges.push([tokens[found].start, tokens[found].start + needle.length]);
+    cursor = found + 1;
+  }
+  return ranges;
+}

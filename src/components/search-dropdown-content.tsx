@@ -2,6 +2,25 @@
 
 import Link from 'next/link';
 import { getImageUrl } from '@/lib/image-url';
+import { getMatchRanges } from '@/lib/word-match';
+
+function Highlight({ text, query }: { text: string; query: string }) {
+  const ranges = getMatchRanges(query, text);
+  if (ranges.length === 0) return <>{text}</>;
+  const parts: React.ReactNode[] = [];
+  let pos = 0;
+  ranges.forEach(([start, end], i) => {
+    if (start > pos) parts.push(text.slice(pos, start));
+    parts.push(
+      <span key={`hl-${i}`} className="text-purple-600 font-semibold">
+        {text.slice(start, end)}
+      </span>,
+    );
+    pos = end;
+  });
+  if (pos < text.length) parts.push(text.slice(pos));
+  return <>{parts}</>;
+}
 
 export interface ProductHit {
   slug: string;
@@ -86,7 +105,7 @@ export function SearchDropdownContent({
                     </div>
                     <div className="flex-1 min-w-0">
                       <div className="text-[15px] leading-snug font-medium text-gray-900 line-clamp-2">
-                        {product.name}
+                        <Highlight text={product.name} query={query} />
                       </div>
                       {product.price && (
                         <div className="mt-0.5 flex items-baseline gap-1.5">
@@ -136,7 +155,7 @@ export function SearchDropdownContent({
                       )}
                     </div>
                     <span className="flex-1 min-w-0 text-[15px] leading-snug font-medium text-gray-900 line-clamp-2">
-                      {article.title}
+                      <Highlight text={article.title} query={query} />
                     </span>
                   </Link>
                 ))}
@@ -167,7 +186,7 @@ export function SearchDropdownContent({
                       )}
                     </div>
                     <span className="flex-1 min-w-0 text-[15px] leading-snug font-medium text-gray-900 line-clamp-2">
-                      {article.title}
+                      <Highlight text={article.title} query={query} />
                     </span>
                   </Link>
                 ))}
