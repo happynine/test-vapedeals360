@@ -6,7 +6,7 @@ import Link from 'next/link';
 import { useLanguage } from '@/hooks/use-language';
 import { useCurrency } from '@/hooks/use-currency';
 import { SiteHeader } from '@/components/site-header';
-import { ArticleCard, ContentCardItem } from '@/components/article-card';
+import { ArticleCard } from '@/components/article-card';
 import { ProductCard, type Product } from '@/components/product-card';
 import type { FullSearchResults } from '@/lib/server-search';
 
