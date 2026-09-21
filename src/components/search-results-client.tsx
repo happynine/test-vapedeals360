@@ -7,21 +7,10 @@ import { useLanguage } from '@/hooks/use-language';
 import { useCurrency } from '@/hooks/use-currency';
 import { SiteHeader } from '@/components/site-header';
 import { ArticleCard, ContentCardItem } from '@/components/article-card';
+import { ProductCard, type Product } from '@/components/product-card';
+import type { FullSearchResults } from '@/lib/server-search';
 
-interface SearchProduct {
-  slug: string;
-  name: string;
-  image_url: string | null;
-  price: string | null;
-}
-
-interface SearchResultsData {
-  products: SearchProduct[];
-  news: ContentCardItem[];
-  best_vapes: ContentCardItem[];
-}
-
-const EMPTY_DATA: SearchResultsData = { products: [], news: [], best_vapes: [] };
+const EMPTY_DATA: FullSearchResults = { products: [], news: [], best_vapes: [] };
 const PAGE_SIZE = 10;
 
 export function SearchResultsClient({
@@ -29,7 +18,7 @@ export function SearchResultsClient({
   initialData,
 }: {
   initialQuery: string;
-  initialData: SearchResultsData;
+  initialData: FullSearchResults;
 }) {
   const { language } = useLanguage();
   const { currencySymbol } = useCurrency();
@@ -39,13 +28,10 @@ export function SearchResultsClient({
   const query = searchParams.get('q') || initialQuery;
   const urlPage = Math.max(1, parseInt(searchParams.get('page') || '1', 10) || 1);
 
-  const [data, setData] = useState<SearchResultsData>(initialData);
+  const [data, setData] = useState<FullSearchResults>(initialData);
   const [loading, setLoading] = useState(false);
   const [page, setPage] = useState(urlPage);
 
-  // Fetch full results (the /api/search endpoint caps each section at 10; for
-  // the landing page we request a larger product window through the same
-  // matching engine). Products are paginated client-side at PAGE_SIZE.
   const fetchResults = useCallback(async () => {
     if (!query) {
       setData(EMPTY_DATA);
@@ -92,6 +78,8 @@ export function SearchResultsClient({
     router.replace(`/search?${params.toString()}`, { scroll: false });
   };
 
+  const sectionTitle = "text-[30px] leading-tight font-bold text-gray-900";
+
   return (
     <div className="min-h-screen">
       <SiteHeader activeTab="" />
@@ -108,7 +96,7 @@ export function SearchResultsClient({
         </nav>
 
         {/* Products heading */}
-        <h2 className="mb-4 text-lg font-bold text-gray-900">
+        <h2 className={`mb-4 ${sectionTitle}`}>
           {language === 'zh' ? '产品' : 'Product'}
         </h2>
 
@@ -146,36 +134,15 @@ export function SearchResultsClient({
           </div>
         ) : (
           <>
-            <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-4">
-              {pagedProducts.map((product) => (
-                <Link
-                  key={product.slug}
-                  href={`/product/${product.slug}`}
-                  className="group rounded-2xl border border-gray-200 bg-white overflow-hidden shadow-sm hover:shadow-md transition-all"
-                >
-                  <div className="relative aspect-square bg-gray-50 overflow-hidden">
-                    {product.image_url && (
-                      <img
-                        src={product.image_url}
-                        alt={product.name}
-                        loading="lazy"
-                        className="h-full w-full object-cover transition-transform duration-500 group-hover:scale-105"
-                      />
-                    )}
-                  </div>
-                  <div className="p-3 sm:p-4">
-                    <h3 className="text-xs sm:text-sm font-semibold text-gray-900 line-clamp-2 group-hover:text-purple-700 transition-colors leading-snug">
-                      {product.name}
-                    </h3>
-                    <div className="mt-1.5 sm:mt-2 flex items-baseline gap-1">
-                      <span className="text-base sm:text-2xl font-bold text-emerald-600 tabular-nums">
-                        {product.price
-                          ? `${currencySymbol}${product.price}`
-                          : '—'}
-                      </span>
-                    </div>
-                  </div>
-                </Link>
+            <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-3 sm:gap-4">
+              {pagedProducts.map((product, idx) => (
+                <ProductCard
+                  key={product.id}
+                  product={product}
+                  language={language}
+                  currencySymbol={currencySymbol}
+                  index={idx}
+                />
               ))}
             </div>
 
@@ -225,10 +192,10 @@ export function SearchResultsClient({
         {/* Best Vapes section */}
         {data.best_vapes.length > 0 && (
           <section className="mt-12">
-            <h2 className="mb-5 text-2xl font-bold text-gray-900">Best Vapes</h2>
+            <h2 className={`mb-5 ${sectionTitle}`}>Best Vapes</h2>
             <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 2xl:grid-cols-5 gap-5">
               {data.best_vapes.map((item) => (
-                <ArticleCard key={item.id} page={item} basePath="/best-vapes" />
+                <ArticleCard key={item.id} page={item} basePath="/best-vapes" type="best_vapes" />
               ))}
             </div>
           </section>
@@ -237,10 +204,10 @@ export function SearchResultsClient({
         {/* News section */}
         {data.news.length > 0 && (
           <section className="mt-12">
-            <h2 className="mb-5 text-2xl font-bold text-gray-900">News</h2>
+            <h2 className={`mb-5 ${sectionTitle}`}>News</h2>
             <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 2xl:grid-cols-5 gap-5">
               {data.news.map((item) => (
-                <ArticleCard key={item.id} page={item} basePath="/news" />
+                <ArticleCard key={item.id} page={item} basePath="/news" type="news" />
               ))}
             </div>
           </section>

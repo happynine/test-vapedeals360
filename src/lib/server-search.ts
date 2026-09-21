@@ -2,13 +2,9 @@ import { getSupabaseClient } from '@/storage/database/supabase-client';
 import { fetchProducts } from '@/lib/database';
 import { matchWords } from '@/lib/word-match';
 import { makeExcerpt } from '@/lib/excerpt';
+import type { Product, ProductPrice } from '@/components/product-card';
 
-export interface SearchProductHit {
-  slug: string;
-  name: string;
-  image_url: string | null;
-  price: string | null;
-}
+export type { Product } from '@/components/product-card';
 
 export interface SearchArticleHit {
   id: number;
@@ -23,20 +19,19 @@ export interface SearchArticleHit {
 }
 
 export interface FullSearchResults {
-  products: SearchProductHit[];
+  products: Product[];
   news: SearchArticleHit[];
   best_vapes: SearchArticleHit[];
 }
 
 const EMPTY_RESULTS: FullSearchResults = { products: [], news: [], best_vapes: [] };
 
-function displayPriceValue(p: Record<string, unknown>): number {
+function isFinitePrice(p: Record<string, unknown>): boolean {
   const raw =
     p.promotion_id != null && p.promo_price != null && p.promo_price !== ''
       ? p.promo_price
       : p.current_price;
-  const n = parseFloat(String(raw));
-  return Number.isNaN(n) ? Infinity : n;
+  return !Number.isNaN(parseFloat(String(raw)));
 }
 
 function firstWord(q: string): string {
@@ -62,7 +57,7 @@ export async function runSearch(
 
   try {
     // ---- Products ----
-    let products: SearchProductHit[] = [];
+    let products: Product[] = [];
     try {
       const list = (await fetchProducts({
         language,
@@ -70,11 +65,10 @@ export async function runSearch(
         offset: 0,
         search: firstWord(query),
         currency,
-      })) as Record<string, unknown>[];
+      })) as Product[];
 
       for (const product of list) {
-        const translations =
-          (product.translations as Array<{ language: string; name: string }>) || [];
+        const translations = product.translations || [];
         const t =
           translations.find((x) => x.language === language) ||
           translations.find((x) => x.language === 'en') ||
@@ -82,33 +76,17 @@ export async function runSearch(
         const name = t?.name || '';
         if (!matchWords(query, name)) continue;
 
-        const prices = (product.prices as Record<string, unknown>[]) || [];
-        const priced = prices.filter(
-          (p) =>
-            displayPriceValue(p) !== Infinity &&
-            (p.currency || '$') === currency,
+        // Keep products that have at least one finite, same-currency price.
+        const hasValidPrice = (product.prices || []).some(
+          (p: ProductPrice) =>
+            !p.no_quote &&
+            (!p.store || p.store.is_active) &&
+            (p.currency || '$') === currency &&
+            isFinitePrice(p as unknown as Record<string, unknown>),
         );
-        let lowest: Record<string, unknown> | null = null;
-        if (priced.length > 0) {
-          lowest = priced.reduce(
-            (min, p) => (displayPriceValue(p) < displayPriceValue(min) ? p : min),
-            priced[0],
-          );
-        }
-        products.push({
-          slug: product.slug as string,
-          name,
-          image_url: (product.image_url as string | null) ?? null,
-          price: lowest
-            ? String(
-                lowest.promotion_id != null &&
-                  lowest.promo_price != null &&
-                  lowest.promo_price !== ''
-                  ? lowest.promo_price
-                  : lowest.current_price,
-              )
-            : null,
-        });
+        if (!hasValidPrice) continue;
+
+        products.push(product);
         if (products.length >= productLimit) break;
       }
     } catch {
