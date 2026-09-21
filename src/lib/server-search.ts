@@ -2,9 +2,9 @@ import { getSupabaseClient } from '@/storage/database/supabase-client';
 import { fetchProducts } from '@/lib/database';
 import { matchWords } from '@/lib/word-match';
 import { makeExcerpt } from '@/lib/excerpt';
-import type { Product, ProductPrice } from '@/components/product-card';
+import type { Product, ProductPrice } from '@/lib/product-utils';
 
-export type { Product } from '@/components/product-card';
+export type { Product };
 
 export interface SearchArticleHit {
   id: number;

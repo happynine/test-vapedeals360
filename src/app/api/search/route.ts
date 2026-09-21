@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { checkRateLimit, rateLimitResponse } from '@/lib/rate-limit';
 import { runSearch } from '@/lib/server-search';
-import { getDisplayPrice } from '@/components/product-card';
+import { getDisplayPrice } from '@/lib/product-utils';
 
 // GET /api/search?q=...&language=en&currency=$
 // Unified global search: up to 10 products, 10 news and 10 best-vapes.
