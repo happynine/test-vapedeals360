@@ -61,7 +61,7 @@ export async function GET(request: NextRequest) {
           slug: product.slug,
           name: t?.name || '',
           image_url: product.image_url ?? null,
-          price: lowest ? getDisplayPrice(lowest) : null,
+          price: lowest ? String(getDisplayPrice(lowest)) : null,
         };
       });
       return NextResponse.json({

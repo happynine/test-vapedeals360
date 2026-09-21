@@ -94,12 +94,15 @@ export function SearchDropdownContent({
                             {zh ? '起' : 'From'}
                           </span>
                           <span className="text-[17px] font-bold text-emerald-600 tabular-nums">
-                            {product.price.startsWith('$') ||
-                            product.price.startsWith('CA$') ||
-                            product.price.startsWith('£') ||
-                            product.price.startsWith('€')
-                              ? product.price
-                              : `$${product.price}`}
+                            {(() => {
+                              const priceStr = String(product.price);
+                              return priceStr.startsWith('$') ||
+                                priceStr.startsWith('CA$') ||
+                                priceStr.startsWith('£') ||
+                                priceStr.startsWith('€')
+                                ? priceStr
+                                : `$${priceStr}`;
+                            })()}
                           </span>
                         </div>
                       )}
