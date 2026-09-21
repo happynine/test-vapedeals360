@@ -39,7 +39,7 @@ export function SearchDropdownContent({
   const total = products.length + news.length + best_vapes.length;
 
   const SectionTitle = ({ children }: { children: React.ReactNode }) => (
-    <div className="px-5 pt-4 pb-1 text-[26px] leading-tight font-bold text-gray-900">
+    <div className="px-5 pt-4 pb-1 text-[18px] leading-tight font-bold text-gray-900">
       {children}
     </div>
   );
