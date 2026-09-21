@@ -12,6 +12,7 @@ export interface ProductHit {
 export interface ArticleHit {
   slug: string;
   title: string;
+  cover_image?: string | null;
 }
 export interface SearchData {
   products: ProductHit[];
@@ -37,110 +38,152 @@ export function SearchDropdownContent({
   const { products, news, best_vapes } = data;
   const total = products.length + news.length + best_vapes.length;
 
-  const sectionLabel = (text: string) => (
-    <div className="sticky top-0 z-10 bg-[#1a1a24]/95 backdrop-blur px-4 pt-3 pb-1 text-xs font-bold uppercase tracking-wider text-purple-400">
-      {text}
+  const SectionTitle = ({ children }: { children: React.ReactNode }) => (
+    <div className="px-5 pt-4 pb-1 text-[26px] leading-tight font-bold text-gray-900">
+      {children}
     </div>
   );
 
   return (
-    <>
+    <div className="text-left">
       {loading ? (
-        <div className="flex items-center justify-center py-8">
-          <svg className="animate-spin h-5 w-5 text-purple-500" fill="none" viewBox="0 0 24 24">
+        <div className="flex items-center justify-center py-12">
+          <svg className="animate-spin h-6 w-6 text-purple-600" fill="none" viewBox="0 0 24 24">
             <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
             <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
           </svg>
-          <span className="ml-2 text-sm text-gray-400">
+          <span className="ml-2 text-sm text-gray-500">
             {zh ? '匹配中…' : 'Matching…'}
           </span>
         </div>
       ) : total === 0 ? (
-        <div className="px-4 py-8 text-center text-sm text-gray-400">
+        <div className="px-5 py-12 text-center text-sm text-gray-500">
           {zh ? '未找到相关结果' : 'No matching results'}
         </div>
       ) : (
         <>
           {products.length > 0 && (
             <div>
-              {sectionLabel(zh ? '产品' : 'Products')}
-              {products.map((product) => (
-                <Link
-                  key={`p-${product.slug}`}
-                  href={`/product/${product.slug}`}
-                  onClick={onNavigate}
-                  className="flex items-center gap-3 px-4 py-2.5 hover:bg-[#2a2a3a] transition-colors"
-                >
-                  <div className="h-9 w-9 flex-shrink-0 rounded-lg bg-white overflow-hidden flex items-center justify-center">
-                    {product.image_url ? (
-                      <img
-                        src={getImageUrl(product.image_url)}
-                        alt={product.name}
-                        className="h-full w-full object-contain"
-                      />
-                    ) : (
-                      <span className="text-[10px] text-gray-400">No img</span>
-                    )}
-                  </div>
-                  <span className="flex-1 min-w-0 text-sm text-white truncate">{product.name}</span>
-                  {product.price && (
-                    <span className="text-sm font-semibold text-emerald-400 tabular-nums flex-shrink-0">
-                      {product.price.startsWith('$') || product.price.startsWith('CA$')
-                        ? product.price
-                        : `$${product.price}`}
-                    </span>
-                  )}
-                </Link>
-              ))}
+              <SectionTitle>{zh ? '产品' : 'Product'}</SectionTitle>
+              <div className="px-2">
+                {products.map((product) => (
+                  <Link
+                    key={`p-${product.slug}`}
+                    href={`/product/${product.slug}`}
+                    onClick={onNavigate}
+                    className="flex items-center gap-3 rounded-xl px-3 py-2.5 hover:bg-gray-50 transition-colors"
+                  >
+                    <div className="h-[58px] w-[58px] flex-shrink-0 rounded-xl bg-gray-100 overflow-hidden flex items-center justify-center">
+                      {product.image_url ? (
+                        <img
+                          src={getImageUrl(product.image_url)}
+                          alt={product.name}
+                          className="h-full w-full object-cover"
+                        />
+                      ) : (
+                        <span className="text-[10px] text-gray-400">No img</span>
+                      )}
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <div className="text-[15px] leading-snug font-medium text-gray-900 line-clamp-2">
+                        {product.name}
+                      </div>
+                      {product.price && (
+                        <div className="mt-0.5 flex items-baseline gap-1.5">
+                          <span className="text-[13px] text-gray-400">
+                            {zh ? '起' : 'From'}
+                          </span>
+                          <span className="text-[17px] font-bold text-emerald-600 tabular-nums">
+                            {product.price.startsWith('$') ||
+                            product.price.startsWith('CA$') ||
+                            product.price.startsWith('£') ||
+                            product.price.startsWith('€')
+                              ? product.price
+                              : `$${product.price}`}
+                          </span>
+                        </div>
+                      )}
+                    </div>
+                  </Link>
+                ))}
+              </div>
             </div>
           )}
 
           {best_vapes.length > 0 && (
             <div>
-              {sectionLabel('Best Vapes')}
-              {best_vapes.map((article) => (
-                <Link
-                  key={`bv-${article.slug}`}
-                  href={`/best-vapes/${article.slug}`}
-                  onClick={onNavigate}
-                  className="flex items-center gap-3 px-4 py-2.5 hover:bg-[#2a2a3a] transition-colors"
-                >
-                  <span className="flex-1 min-w-0 text-sm text-gray-200 truncate">
-                    {article.title}
-                  </span>
-                </Link>
-              ))}
+              <SectionTitle>Best Vapes</SectionTitle>
+              <div className="px-2">
+                {best_vapes.map((article) => (
+                  <Link
+                    key={`bv-${article.slug}`}
+                    href={`/best-vapes/${article.slug}`}
+                    onClick={onNavigate}
+                    className="flex items-center gap-3 rounded-xl px-3 py-2.5 hover:bg-gray-50 transition-colors"
+                  >
+                    <div className="h-[58px] w-[58px] flex-shrink-0 rounded-xl bg-gray-100 overflow-hidden flex items-center justify-center">
+                      {article.cover_image ? (
+                        <img
+                          src={getImageUrl(article.cover_image)}
+                          alt={article.title}
+                          className="h-full w-full object-cover"
+                        />
+                      ) : (
+                        <span className="text-[10px] text-gray-400">No img</span>
+                      )}
+                    </div>
+                    <span className="flex-1 min-w-0 text-[15px] leading-snug font-medium text-gray-900 line-clamp-2">
+                      {article.title}
+                    </span>
+                  </Link>
+                ))}
+              </div>
             </div>
           )}
 
           {news.length > 0 && (
             <div>
-              {sectionLabel(zh ? '新闻' : 'News')}
-              {news.map((article) => (
-                <Link
-                  key={`n-${article.slug}`}
-                  href={`/news/${article.slug}`}
-                  onClick={onNavigate}
-                  className="flex items-center gap-3 px-4 py-2.5 hover:bg-[#2a2a3a] transition-colors"
-                >
-                  <span className="flex-1 min-w-0 text-sm text-gray-200 truncate">
-                    {article.title}
-                  </span>
-                </Link>
-              ))}
+              <SectionTitle>News</SectionTitle>
+              <div className="px-2">
+                {news.map((article) => (
+                  <Link
+                    key={`n-${article.slug}`}
+                    href={`/news/${article.slug}`}
+                    onClick={onNavigate}
+                    className="flex items-center gap-3 rounded-xl px-3 py-2.5 hover:bg-gray-50 transition-colors"
+                  >
+                    <div className="h-[58px] w-[58px] flex-shrink-0 rounded-xl bg-gray-100 overflow-hidden flex items-center justify-center">
+                      {article.cover_image ? (
+                        <img
+                          src={getImageUrl(article.cover_image)}
+                          alt={article.title}
+                          className="h-full w-full object-cover"
+                        />
+                      ) : (
+                        <span className="text-[10px] text-gray-400">No img</span>
+                      )}
+                    </div>
+                    <span className="flex-1 min-w-0 text-[15px] leading-snug font-medium text-gray-900 line-clamp-2">
+                      {article.title}
+                    </span>
+                  </Link>
+                ))}
+              </div>
             </div>
           )}
 
-          {/* View More -> full search results page */}
-          <Link
-            href={`/?search=${encodeURIComponent(query.trim())}`}
-            onClick={onNavigate}
-            className="block border-t border-gray-800 px-4 py-3 text-center text-sm font-medium text-purple-400 hover:bg-[#2a2a3a] transition-colors"
-          >
-            {zh ? '查看更多结果' : 'View More'}
-          </Link>
+          {/* View More -> dedicated search results page */}
+          <div className="mt-1 border-t border-gray-200">
+            <Link
+              href={`/search?q=${encodeURIComponent(query.trim())}`}
+              onClick={onNavigate}
+              className="block px-5 py-3.5 text-center text-[17px] font-medium text-purple-600 hover:text-purple-800 transition-colors"
+            >
+              {zh ? '查看更多' : 'View More'}
+            </Link>
+          </div>
         </>
       )}
-    </>
+    </div>
   );
 }

@@ -274,7 +274,7 @@ export function SiteHeader({ activeTab = 'vape-deals' }: SiteHeaderProps) {
                     onKeyDown={(e) => {
                       if (e.key === 'Enter' && desktopSearchQuery.trim()) {
                         e.preventDefault();
-                        router.push(`/?search=${encodeURIComponent(desktopSearchQuery.trim())}`);
+                        router.push(`/search?q=${encodeURIComponent(desktopSearchQuery.trim())}`);
                         setDesktopSearchFocused(false);
                       }
                     }}
@@ -294,7 +294,7 @@ export function SiteHeader({ activeTab = 'vape-deals' }: SiteHeaderProps) {
                 </div>
                 {/* Desktop Search Results Dropdown */}
                 {desktopSearchFocused && desktopSearchQuery.trim() && (
-                  <div className="absolute top-full left-0 right-0 mt-1 bg-[#1a1a24] border border-gray-700 rounded-xl shadow-2xl z-50 max-h-[70vh] overflow-y-auto">
+                  <div className="absolute top-full left-1/2 -translate-x-1/2 mt-2 w-[440px] max-w-[92vw] bg-white border border-gray-200 rounded-2xl shadow-2xl z-50 max-h-[70vh] overflow-y-auto">
                     <SearchDropdownContent
                       loading={desktopSearchLoading}
                       data={desktopSearchResults}
@@ -604,7 +604,7 @@ export function SiteHeader({ activeTab = 'vape-deals' }: SiteHeaderProps) {
                 onKeyDown={(e) => {
                   if (e.key === 'Enter' && searchQuery.trim()) {
                     e.preventDefault();
-                    router.push(`/?search=${encodeURIComponent(searchQuery.trim())}`);
+                    router.push(`/search?q=${encodeURIComponent(searchQuery.trim())}`);
                     setMobileSearchOpen(false);
                   }
                 }}
@@ -624,7 +624,7 @@ export function SiteHeader({ activeTab = 'vape-deals' }: SiteHeaderProps) {
             </div>
             {/* Search Results Dropdown */}
             {searchQuery.trim() && (
-              <div className="mt-2 rounded-xl border border-gray-700 bg-[#1a1a24] max-h-[60vh] overflow-y-auto">
+              <div className="mt-2 rounded-2xl border border-gray-200 bg-white shadow-xl max-h-[60vh] overflow-y-auto">
                 <SearchDropdownContent
                   loading={searchLoading}
                   data={searchResults}
